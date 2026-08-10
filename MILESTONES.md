@@ -25,21 +25,28 @@
 
 ---
 
-## Milestone 1: Shared Models & Database ← START HERE
+## Milestone 1: Shared Models & Database ✅ DONE (2026-08-10)
 **Goal**: Define all Pydantic models and set up PostgreSQL with Alembic migrations.
 
 **Deliverables:**
-- [ ] `packages/common/` — shared Pydantic models (Agent, Tool, SafetyPolicy, Run, EvalSuite, etc.)
-- [ ] PostgreSQL connection setup with SQLAlchemy async
-- [ ] Alembic migration for initial schema (all tables from ARCHITECTURE.md)
-- [ ] Database seed script with sample data
-- [ ] Unit tests for models
+- [x] `packages/common/` — shared Pydantic models (Agent, Tool, SafetyPolicy, Run, EvalSuite, etc.) — `agentforge_common/models.py` + `enums.py`
+- [x] PostgreSQL connection setup with SQLAlchemy async — `agentforge_common/db.py`
+- [x] Alembic migration for initial schema (all tables from ARCHITECTURE.md) — `packages/common/alembic/versions/0001_initial_schema.py`, all 9 tables
+- [x] Database seed script with sample data — `scripts/seed.py`
+- [x] Unit tests for models — `tests/unit/common/test_models.py`, 9/9 passing
 
-**Done when**: Migrations run, seed data is in the database, models validate correctly.
+**Done when**: Migrations run, seed data is in the database, models validate correctly. ✅ **Fully verified against the live Postgres container.**
+
+**Verification status**: `alembic upgrade head` created all 9 tables + 4 Postgres enum types; `alembic downgrade base` → `upgrade head` round-tripped cleanly. `scripts/seed.py` inserted 1 agent, 1 run, 3 run steps, 1 cost record, 1 eval suite, 1 eval run, 2 eval results — row counts confirmed via direct query. `pytest` 9/9 passed, `ruff check` clean.
+
+**Bugs caught and fixed during verification** (would have caused silent data corruption in Milestone 2+):
+1. Postgres ENUM types were being created twice (once explicitly, once implicitly by `create_table`) — fixed with `create_type=False` on the inline column-level enum objects in the migration.
+2. SQLAlchemy's `Enum` column type binds by Python enum *member name* (`"ACTIVE"`) by default, not member *value* (`"active"`) — silently mismatched the lowercase Postgres enum values. Fixed with a `values_callable` helper (`_str_enum`) in `orm.py`.
+3. `Mapped[datetime]` columns defaulted to timezone-naive `TIMESTAMP`, but the migration created timezone-aware `TIMESTAMPTZ` columns — asyncpg rejected timezone-aware Python datetimes. Fixed by registering `datetime: DateTime(timezone=True)` in `Base.type_annotation_map` (`db.py`), so every timestamp column is tz-aware by default.
 
 ---
 
-## Milestone 2: Agent CRUD API
+## Milestone 2: Agent CRUD API ← START HERE
 **Goal**: Full REST API for managing agents (no execution yet).
 
 **Deliverables:**
