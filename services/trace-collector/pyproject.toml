@@ -1,0 +1,16 @@
+[project]
+name = "trace-collector"
+version = "0.1.0"
+description = "AgentForge Trace Collector — OpenTelemetry span ingestion and trace query API"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "agentforge-common",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+agentforge-common = { workspace = true }
