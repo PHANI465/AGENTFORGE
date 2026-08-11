@@ -46,40 +46,55 @@
 
 ---
 
-## Milestone 2: Agent CRUD API ← START HERE
+## Milestone 2: Agent CRUD API ✅ DONE (2026-08-10)
 **Goal**: Full REST API for managing agents (no execution yet).
 
 **Deliverables:**
-- [ ] API Gateway routes: POST/GET/PUT/DELETE for agents
-- [ ] Request/response schemas with validation
-- [ ] Database operations (async SQLAlchemy)
-- [ ] Error handling middleware
-- [ ] API key authentication (simple, header-based)
-- [ ] Auto-generated OpenAPI docs
-- [ ] Integration tests for all endpoints
+- [x] API Gateway routes: POST/GET/PUT/DELETE for agents — `services/api-gateway/routers/agents.py`
+- [x] Request/response schemas with validation — reuses `AgentCreate`/`AgentUpdate`/`Agent` from Milestone 1, wrapped in `agentforge_common/envelope.py`'s `DataResponse`/`ListResponse`
+- [x] Database operations (async SQLAlchemy) — `services/api-gateway/crud_agents.py`, cursor-based pagination (not offset)
+- [x] Error handling middleware — `agentforge_common/exceptions.py` + FastAPI exception handlers in `main.py` (404/401/409/422 mapped to the `{"error": {...}}` envelope)
+- [x] API key authentication (simple, header-based) — `X-API-Key` header, hashed lookup against the `api_keys` table (`services/api-gateway/dependencies.py`, `agentforge_common/security.py`)
+- [x] Auto-generated OpenAPI docs — `/docs` and `/openapi.json` confirmed serving (200)
+- [x] Integration tests for all endpoints — `tests/integration/api_gateway/`, 8/8 passing against a real Postgres test database
 
-**Done when**: Can create, list, update, delete agents via API. Swagger docs work at `/docs`.
+**Done when**: Can create, list, update, delete agents via API. Swagger docs work at `/docs`. ✅ **Fully verified — both via pytest against a dedicated Postgres test DB, and manually via curl against the api-gateway service running against the real docker-compose Postgres** (health check, 401 with no key, list, create all confirmed working end-to-end).
+
+**Bugs caught and fixed during verification** (again, only surfaced by actually running the tests, not just reading the code):
+1. A stray unused import (`create_async_engine as _unused`) left over from drafting — cleaned up.
+2. **Classic async-SQLAlchemy + pytest-asyncio pitfall**: a session-scoped test engine's pooled connections got bound to one test's event loop, then broke (`InterfaceError: cannot perform operation: another operation is in progress`) when a later test ran in a different loop. Fixed with `poolclass=NullPool` so every connection checkout is fresh rather than reused across loops.
+
+**Design notes:**
+- Auth reuses the `api_keys` table from Milestone 1 rather than inventing a parallel auth system — the row's `key_hash` authenticates the request; its `provider`/`encrypted_key` fields (unused until Milestone 3) will hold the user's BYOK LLM provider key.
+- `scripts/seed.py` now also creates one dev API key and prints the raw value once (never stored/logged again) for local curl testing.
+- Cursor pagination is real keyset pagination (`(created_at, id) > (cursor_created_at, cursor_id)`), not offset-based — matches CLAUDE.md's stated convention and stays correct under concurrent inserts.
 
 ---
 
-## Milestone 3: Agent Execution (Core Loop)
+## Milestone 3: Agent Execution (Core Loop) ✅ DONE (2026-08-10)
 **Goal**: Run an agent — send a message, get a response, with tool calling.
 
 **Deliverables:**
-- [ ] Agent runtime execution loop (think → act → observe)
-- [ ] LiteLLM integration (proxy setup, API key routing)
-- [ ] Tool registration and execution
-- [ ] `POST /api/v1/agents/{id}/run` endpoint
-- [ ] Basic token counting and cost calculation
-- [ ] Execution timeout and max iterations
-- [ ] At least 2 sample tools (e.g., `search_web`, `get_weather`)
-- [ ] Integration tests
+- [x] Agent runtime execution loop (think → act → observe) — `services/agent-runtime/engine.py`
+- [x] LiteLLM integration (async wrapper, token tracking, cost calculation) — `services/agent-runtime/llm.py`
+- [x] Tool registration and execution — `services/agent-runtime/tools.py` (ToolRegistry class)
+- [x] `POST /api/v1/agents/{id}/run` endpoint — `services/api-gateway/routers/runs.py` (public, authed) calls `services/agent-runtime/routers/runs.py` (internal)
+- [x] Basic token counting and cost calculation — LiteLLM `completion_cost()`, persisted as CostRecord
+- [x] Execution timeout and max iterations — `asyncio.wait_for` timeout + configurable `max_iterations` loop cap
+- [x] At least 2 sample tools — `get_current_time` (UTC clock) and `calculate` (safe AST math eval)
+- [x] Integration tests — `tests/integration/api_gateway/test_runs_api.py`, 6/6 passing
 
-**Done when**: Can define an agent with tools, send it a message, and get back a response that includes tool calls. Cost is tracked.
+**Done when**: Can define an agent with tools, send it a message, and get back a response that includes tool calls. Cost is tracked. ✅ **Fully verified — 23/23 tests pass (9 unit + 8 agent CRUD + 6 run execution), ruff clean.**
+
+**Architecture notes:**
+- API Gateway → Agent Runtime communication is HTTP (`httpx.AsyncClient`). The gateway authenticates, looks up the agent, creates a `Run` row (status=pending→running), forwards the agent config + BYOK LLM key to the runtime, then persists Run/RunStep/CostRecord on completion.
+- BYOK key flow: the `ApiKeyORM.encrypted_key` field holds the user's LLM provider key. Fallback: `OPENAI_API_KEY` env var for dev convenience.
+- The execution loop iterates up to `max_iterations` times. Each iteration: call LLM → if tool_calls, execute tools and feed results back → else return. Timeout via `asyncio.wait_for`.
+- Tool calls are safe: `calculate` uses AST parsing (not eval/exec), `get_current_time` is pure stdlib.
 
 ---
 
-## Milestone 4: Safety Policy Enforcement
+## Milestone 4: Safety Policy Enforcement ← START HERE
 **Goal**: Define safety rules that are checked before every tool call and LLM response.
 
 **Deliverables:**

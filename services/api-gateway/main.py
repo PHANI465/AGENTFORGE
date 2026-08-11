@@ -1,15 +1,52 @@
 """API Gateway — FastAPI entry point.
 
 REST API for CRUD on agents/tools/policies, auth, rate limiting, and routing
-to the Agent Runtime and Eval Service. Stubbed in Milestone 0; routes land in
-Milestone 2 (Agent CRUD API).
+to the Agent Runtime and Eval Service. Agent CRUD lands in Milestone 2;
+routing to Agent Runtime/Eval Service lands in later milestones.
 """
 
-from fastapi import FastAPI
+from agentforge_common.envelope import ErrorDetail, ErrorResponse
+from agentforge_common.exceptions import (
+    AgentForgeError,
+    ConflictError,
+    NotFoundError,
+    UnauthorizedError,
+)
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from routers.agents import router as agents_router
+from routers.runs import router as runs_router
 
 SERVICE_NAME = "api-gateway"
 
 app = FastAPI(title="AgentForge API Gateway", version="0.1.0")
+
+app.include_router(agents_router)
+app.include_router(runs_router)
+
+_STATUS_BY_ERROR = {
+    NotFoundError: status.HTTP_404_NOT_FOUND,
+    UnauthorizedError: status.HTTP_401_UNAUTHORIZED,
+    ConflictError: status.HTTP_409_CONFLICT,
+}
+
+
+@app.exception_handler(AgentForgeError)
+async def agentforge_error_handler(_request: Request, exc: AgentForgeError) -> JSONResponse:
+    status_code = _STATUS_BY_ERROR.get(type(exc), status.HTTP_400_BAD_REQUEST)
+    body = ErrorResponse(error=ErrorDetail(code=exc.code, message=exc.message))
+    return JSONResponse(status_code=status_code, content=body.model_dump())
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(
+    _request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    body = ErrorResponse(
+        error=ErrorDetail(code="validation_error", message=str(exc.errors()))
+    )
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=body.model_dump())
 
 
 @app.get("/health")

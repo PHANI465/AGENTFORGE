@@ -158,6 +158,12 @@ class EvalResult(BaseModel):
     created_at: datetime
 
 
+class RunCreate(BaseModel):
+    """Input payload for POST /api/v1/agents/{id}/run."""
+
+    input: str
+
+
 class CostRecord(BaseModel):
     id: UUID
     agent_id: UUID

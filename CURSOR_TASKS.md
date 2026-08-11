@@ -50,16 +50,48 @@ creation, enum member-name vs. value mismatch, naive vs. timezone-aware
 datetime columns) — see MILESTONES.md for details. None of this would have
 been caught without actually running migrations against a live database.
 
-Your Cursor tasks now:
+- [x] Commit and push the Milestone 1 changes — done
 - [ ] Copy `.env.example` → `.env` and add your OpenAI API key (needed by Milestone 3, do whenever)
 - [ ] Customize `README.md` with your GitHub username and personal branding (cosmetic, optional)
-- [ ] Commit and push the Milestone 1 changes (`git add`, `git commit`, `git push`) — remember: no AI co-author trailer
-- [ ] Optional: browse the seeded data yourself — `psql postgresql://agentforge:agentforge@localhost:5432/agentforge` or any Postgres GUI (TablePlus, DBeaver) to see the sample agent/run/eval rows
 
-## Current: Milestone 2 — Agent CRUD API
+## Milestone 2 — Agent CRUD API ✅ FULLY DONE (2026-08-10)
 
-Claude Code will handle this next: FastAPI routes for full agent CRUD, request/response
-schemas, API key auth, error handling middleware, OpenAPI docs, integration tests.
+Full REST API for agents is live: `POST/GET/PUT/DELETE /api/v1/agents` (+ list with
+cursor pagination), `X-API-Key` header auth against the `api_keys` table, structured
+error envelope, OpenAPI docs at `/docs`. Verified two ways: 8/8 integration tests
+passing against a dedicated Postgres test database, AND manually via curl against
+the api-gateway service running against the real docker-compose Postgres (health,
+401-without-key, list, create all confirmed). `scripts/seed.py` now prints a dev API
+key you can use for manual testing. See MILESTONES.md for the two real bugs caught
+and fixed during verification (a pytest-asyncio + async-SQLAlchemy event-loop pitfall
+was the interesting one).
+
+Your Cursor tasks now:
+- [ ] Commit and push the Milestone 2 changes — no AI co-author trailer
+- [ ] Try the API yourself: run `docker compose -f infra/docker/docker-compose.yml --env-file .env up -d --build` (rebuild picks up the new code), then `docker compose -f infra/docker/docker-compose.yml exec api-gateway python /app/scripts/seed.py` won't work as-is (seed.py isn't copied into the container image) — easier to just run `uv run python scripts/seed.py` locally against the compose Postgres, grab the printed dev key, and hit `http://localhost:8000/docs` in a browser to try the endpoints interactively via Swagger's "Try it out"
+- [ ] Copy `.env.example` → `.env` and add your OpenAI API key (needed by Milestone 3)
+- [ ] Customize `README.md` with your GitHub username and personal branding (cosmetic, optional)
+
+## Milestone 3 — Agent Execution (Core Loop) ✅ FULLY DONE (2026-08-10)
+
+The core execution engine is live: think→act→observe loop with LiteLLM integration,
+tool registry (2 built-in tools: `get_current_time`, `calculate`), token counting,
+cost calculation, timeout + max iterations. `POST /api/v1/agents/{id}/run` on the
+API Gateway authenticates, looks up the agent, calls the agent-runtime service via
+HTTP, and persists Run/RunStep/CostRecord rows to Postgres. 23/23 tests passing
+(9 unit + 8 agent CRUD + 6 run execution), ruff clean.
+
+Your Cursor tasks now:
+- [ ] Commit and push Milestones 2 + 3 changes together — no AI co-author trailer
+- [ ] Add your OpenAI API key to `.env` as `OPENAI_API_KEY=sk-...`
+- [ ] Rebuild containers: `docker compose -f infra/docker/docker-compose.yml --env-file .env up -d --build`
+- [ ] Try it end-to-end: seed an agent (`uv run python scripts/seed.py`), grab the dev API key, then POST to `/api/v1/agents/{id}/run` with `{"input": "What time is it?"}` via Swagger (`/docs`) or curl
+- [ ] Customize `README.md` with your GitHub username and personal branding (cosmetic, optional)
+
+## Current: Milestone 4 — Safety Policy Enforcement
+
+Claude Code will handle this next: safety rules checked before every tool call
+and LLM response, violation logging, block/warn/log enforcement modes.
 No Cursor tasks yet — they'll appear here once scaffolded.
 
 ---

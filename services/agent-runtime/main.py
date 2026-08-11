@@ -1,15 +1,16 @@
 """Agent Runtime — FastAPI entry point.
 
 Executes the agent think -> act -> observe loop: tool orchestration, safety
-policy enforcement, context management, streaming responses. Stubbed in
-Milestone 0; execution loop lands in Milestone 3.
+policy enforcement, context management. Internal API called by the API Gateway.
 """
 
 from fastapi import FastAPI
+from routers.runs import router as runs_router
 
 SERVICE_NAME = "agent-runtime"
 
 app = FastAPI(title="AgentForge Agent Runtime", version="0.1.0")
+app.include_router(runs_router)
 
 
 @app.get("/health")

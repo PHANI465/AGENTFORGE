@@ -17,6 +17,7 @@ from agentforge_common.enums import (
 )
 from agentforge_common.orm import (
     AgentORM,
+    ApiKeyORM,
     CostRecordORM,
     EvalResultORM,
     EvalRunORM,
@@ -24,6 +25,7 @@ from agentforge_common.orm import (
     RunORM,
     RunStepORM,
 )
+from agentforge_common.security import generate_api_key, hash_api_key
 
 
 async def seed() -> None:
@@ -184,9 +186,25 @@ async def seed() -> None:
             ]
         )
 
+        dev_raw_key = generate_api_key()
+        session.add(
+            ApiKeyORM(
+                id=uuid.uuid4(),
+                key_hash=hash_api_key(dev_raw_key),
+                user_id="dev-user",
+                provider="openai",
+                encrypted_key="",
+            )
+        )
+
         await session.commit()
-        print(f"Seeded agent {agent.id} ({agent.name}) with 1 run, 3 run steps, "
-              f"1 cost record, 1 eval suite, 1 eval run, 2 eval results.")
+        print(
+            f"Seeded agent {agent.id} ({agent.name}) with 1 run, 3 run steps, "
+            f"1 cost record, 1 eval suite, 1 eval run, 2 eval results."
+        )
+        print()
+        print(f"Dev API key (save this — it won't be shown again): {dev_raw_key}")
+        print('Try it:  curl -H "X-API-Key: ' + dev_raw_key + '" http://localhost:8000/api/v1/agents')
 
 
 if __name__ == "__main__":
