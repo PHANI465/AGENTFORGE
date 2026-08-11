@@ -82,10 +82,10 @@ HTTP, and persists Run/RunStep/CostRecord rows to Postgres. 23/23 tests passing
 (9 unit + 8 agent CRUD + 6 run execution), ruff clean.
 
 Your Cursor tasks now:
-- [ ] Commit and push Milestones 2 + 3 changes together — no AI co-author trailer
-- [ ] Add your OpenAI API key to `.env` as `OPENAI_API_KEY=sk-...`
-- [ ] Rebuild containers: `docker compose -f infra/docker/docker-compose.yml --env-file .env up -d --build`
-- [ ] Try it end-to-end: seed an agent (`uv run python scripts/seed.py`), grab the dev API key, then POST to `/api/v1/agents/{id}/run` with `{"input": "What time is it?"}` via Swagger (`/docs`) or curl
+- [x] Add your OpenAI API key to `.env` as `OPENAI_API_KEY=sk-...` — done
+- [x] Rebuild containers and add `OPENAI_API_KEY` passthrough to api-gateway in docker-compose.yml — done
+- [x] Try it end-to-end — done and confirmed 2026-08-11: real `gpt-4o-mini` call via Swagger, `status: "completed"`
+- [ ] **Commit and push Milestones 2 + 3 changes together — no AI co-author trailer** (still pending)
 - [ ] Customize `README.md` with your GitHub username and personal branding (cosmetic, optional)
 
 ## Current: Milestone 4 — Safety Policy Enforcement

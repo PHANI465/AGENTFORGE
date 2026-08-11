@@ -84,13 +84,17 @@
 - [x] At least 2 sample tools — `get_current_time` (UTC clock) and `calculate` (safe AST math eval)
 - [x] Integration tests — `tests/integration/api_gateway/test_runs_api.py`, 6/6 passing
 
-**Done when**: Can define an agent with tools, send it a message, and get back a response that includes tool calls. Cost is tracked. ✅ **Fully verified — 23/23 tests pass (9 unit + 8 agent CRUD + 6 run execution), ruff clean.**
+**Done when**: Can define an agent with tools, send it a message, and get back a response that includes tool calls. Cost is tracked. ✅ **Fully verified two ways: 23/23 automated tests pass (9 unit + 8 agent CRUD + 6 run execution, mocked runtime), ruff clean — AND a live manual run against the real docker-compose stack with a real OpenAI API call (`gpt-4o-mini`), confirmed via Swagger UI on 2026-08-11: `POST /api/v1/agents/{id}/run` returned `status: "completed"` with a genuine model-generated response.**
 
 **Architecture notes:**
 - API Gateway → Agent Runtime communication is HTTP (`httpx.AsyncClient`). The gateway authenticates, looks up the agent, creates a `Run` row (status=pending→running), forwards the agent config + BYOK LLM key to the runtime, then persists Run/RunStep/CostRecord on completion.
 - BYOK key flow: the `ApiKeyORM.encrypted_key` field holds the user's LLM provider key. Fallback: `OPENAI_API_KEY` env var for dev convenience.
 - The execution loop iterates up to `max_iterations` times. Each iteration: call LLM → if tool_calls, execute tools and feed results back → else return. Timeout via `asyncio.wait_for`.
 - Tool calls are safe: `calculate` uses AST parsing (not eval/exec), `get_current_time` is pure stdlib.
+
+**Bugs caught during live manual verification (not caught by automated tests, since those mock the runtime call):**
+1. `infra/docker/docker-compose.yml` wasn't passing `OPENAI_API_KEY` through to the `api-gateway` container's environment — the gateway is where the BYOK-fallback check happens, so the key needs to reach it, not just agent-runtime. Fixed by adding `OPENAI_API_KEY=${OPENAI_API_KEY:-}` to api-gateway's `environment:` block.
+2. After a Docker Desktop restart, `docker compose up -d api-gateway` only started api-gateway and its explicit Compose `depends_on` (Postgres, Redis) — `agent-runtime` stayed stopped, since the two services are only connected via a runtime HTTP call, not a Compose dependency. Symptom: the run "succeeded" with `status: "failed"` and no error surfaced in the API response (the `Run` model doesn't expose the internal error string). Root-caused by checking `docker ps` and the agent-runtime container logs (no incoming request logged at all). Resolved by bringing up the full stack (`docker compose up -d` with no service name) rather than starting services one at a time.
 
 ---
 
