@@ -39,3 +39,4 @@ class ExecuteResponse(BaseModel):
     total_cost_usd: float = 0.0
     model: str = ""
     error: str | None = None
+    trace_id: str | None = None

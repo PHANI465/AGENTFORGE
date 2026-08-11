@@ -43,12 +43,14 @@ async def complete_run(
     total_tokens_in: int,
     total_tokens_out: int,
     total_cost_usd: float,
+    trace_id: str | None = None,
 ) -> Run:
     """Finalise a Run with its output, steps, and cost record."""
     now = datetime.now(UTC)
 
     run_orm.output = output
     run_orm.status = status
+    run_orm.trace_id = trace_id
     run_orm.started_at = run_orm.started_at or now
     run_orm.completed_at = now
 
@@ -86,6 +88,7 @@ async def complete_run(
         input=run_orm.input,
         output=run_orm.output,
         status=run_orm.status,
+        trace_id=run_orm.trace_id,
         started_at=run_orm.started_at,
         completed_at=run_orm.completed_at,
     )

@@ -6,10 +6,13 @@ Milestone 6 (Evaluation Pipeline).
 """
 
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 SERVICE_NAME = "eval-service"
 
 app = FastAPI(title="AgentForge Eval Service", version="0.1.0")
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 @app.get("/health")

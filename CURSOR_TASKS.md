@@ -103,11 +103,27 @@ Your Cursor tasks now:
 - [ ] Try safety enforcement: create an agent with `safety_policy.rules: ["never share customer PII"]` and `on_violation: "block"`, then run it with a prompt that would elicit PII — verify the response is blocked
 - [ ] Customize `README.md` with your GitHub username and personal branding (cosmetic, optional)
 
-## Next: Milestone 5 — Tracing & Observability
+## Milestone 5 — Tracing & Observability ✅ FULLY DONE (2026-08-11)
 
-Claude Code will handle this next: OpenTelemetry spans for LLM/tool/safety calls,
-trace storage in PostgreSQL, `GET /api/v1/runs/{id}/trace` endpoint, Prometheus
-metrics, Grafana dashboard config, Docker Compose updated with Prometheus + Grafana.
+Full observability pipeline: OTel instrumentation in agent-runtime engine (root
+span + child spans for LLM/tool/safety calls with attributes), trace_id stored on
+Run records (Alembic migration 0002), `GET /api/v1/runs/{id}/trace` endpoint with
+structured TraceResponse + TraceSummary, Prometheus `/metrics` on all 4 services
+with custom agent metrics (LLM calls, tokens, cost, safety violations, run duration,
+LLM latency), Grafana dashboard (10 panels) auto-provisioned, Prometheus + Grafana
+added to Docker Compose. 59/59 tests passing, ruff clean.
+
+Your Cursor tasks now:
+- [ ] **Commit and push Milestone 5 changes — no AI co-author trailer**
+- [ ] `docker compose up -d --build` to rebuild all services, then run `alembic upgrade head` to add the trace_id column
+- [ ] Try the trace endpoint: run an agent, then `GET /api/v1/runs/{run_id}/trace` to see the full trace
+- [ ] Visit Grafana at `http://localhost:3000` (admin/agentforge) and check the AgentForge dashboard
+- [ ] Visit Prometheus at `http://localhost:9090` and check that all targets are up
+
+## Next: Milestone 6 — Evaluation Pipeline
+
+Claude Code will handle this next: eval service with test suite CRUD, test case
+runner, scoring (accuracy, latency, cost, tool correctness), version comparison.
 
 ---
 

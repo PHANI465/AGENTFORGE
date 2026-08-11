@@ -122,23 +122,30 @@
 
 ---
 
-## Milestone 5: Tracing & Observability ← START HERE
+## Milestone 5: Tracing & Observability ✅ DONE (2026-08-11)
 **Goal**: Every agent run produces a full trace viewable via API.
 
 **Deliverables:**
-- [ ] OpenTelemetry integration in Agent Runtime
-- [ ] Span creation for: LLM calls, tool calls, safety checks
-- [ ] Trace storage in PostgreSQL
-- [ ] `GET /api/v1/runs/{id}/trace` endpoint
-- [ ] Prometheus metrics endpoint (`/metrics`) on all services
-- [ ] Grafana dashboard config (JSON provisioning)
-- [ ] Docker Compose updated with Prometheus + Grafana
+- [x] OpenTelemetry integration in Agent Runtime — `services/agent-runtime/tracing.py` (TracerProvider, InMemorySpanExporter, tracer)
+- [x] Span creation for: LLM calls, tool calls, safety checks — `engine.py` instrumented with `tracer.start_as_current_span()` at every step
+- [x] Trace storage in PostgreSQL — RunSteps (existing) + `trace_id` column on runs table (migration `0002_add_trace_id_to_runs.py`)
+- [x] `GET /api/v1/runs/{id}/trace` endpoint — `services/api-gateway/routers/traces.py`, returns structured `TraceResponse` with spans timeline + `TraceSummary`
+- [x] Prometheus metrics endpoint (`/metrics`) on all services — `prometheus-fastapi-instrumentator` on all 4 services + custom agent metrics (`services/agent-runtime/metrics.py`)
+- [x] Grafana dashboard config (JSON provisioning) — `infra/docker/grafana/` with datasource, dashboard provider, and 10-panel dashboard JSON
+- [x] Docker Compose updated with Prometheus + Grafana — `prometheus:v2.53.0` + `grafana:11.1.0` with volume mounts
 
-**Done when**: Run an agent, then fetch its trace — see every step with timing and tokens.
+**Done when**: Run an agent, then fetch its trace — see every step with timing and tokens. ✅ **Fully verified — 59/59 tests pass (8 unit tracing + 20 unit safety + 9 unit models + 18 integration agent/run/safety + 4 integration trace), ruff clean.**
+
+**Architecture notes:**
+- OTel tracing uses an in-memory span exporter that collects spans during execution. The root span (`agent.execute`) generates a `trace_id` that flows through the RunResult → API Gateway → Run record in Postgres. Child spans for LLM calls, tool executions, and safety checks carry attributes (model, tokens, cost, latency, tool name, violation count).
+- The trace endpoint (`GET /api/v1/runs/{id}/trace`) reconstructs the trace from RunStep records — no separate span storage needed. Returns a `TraceResponse` with run metadata, ordered spans, and a computed `TraceSummary` (total steps/LLM calls/tool calls/safety checks/tokens/latency).
+- Custom Prometheus metrics in agent-runtime: `agentforge_llm_calls_total`, `agentforge_tokens_in_total`, `agentforge_tokens_out_total`, `agentforge_cost_usd_total`, `agentforge_tool_calls_total`, `agentforge_safety_violations_total`, `agentforge_agent_run_duration_seconds`, `agentforge_llm_call_duration_seconds`.
+- Grafana dashboard has 10 panels: HTTP request rate, HTTP latency p95, LLM calls total, total cost, safety violations, tool calls, token consumption rates, agent run duration percentiles, LLM call latency by model, safety violations by check point.
+- Prometheus scrapes `/metrics` from all 4 services every 15s. Grafana auto-provisions the Prometheus datasource and AgentForge dashboard on startup.
 
 ---
 
-## Milestone 6: Evaluation Pipeline
+## Milestone 6: Evaluation Pipeline ← START HERE
 **Goal**: Define test suites, run agents against them, get scores.
 
 **Deliverables:**

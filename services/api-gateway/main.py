@@ -15,8 +15,10 @@ from agentforge_common.exceptions import (
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 from routers.agents import router as agents_router
 from routers.runs import router as runs_router
+from routers.traces import router as traces_router
 
 SERVICE_NAME = "api-gateway"
 
@@ -24,6 +26,9 @@ app = FastAPI(title="AgentForge API Gateway", version="0.1.0")
 
 app.include_router(agents_router)
 app.include_router(runs_router)
+app.include_router(traces_router)
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 _STATUS_BY_ERROR = {
     NotFoundError: status.HTTP_404_NOT_FOUND,

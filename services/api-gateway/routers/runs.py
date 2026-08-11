@@ -93,6 +93,7 @@ async def run_agent(
         total_tokens_in=result.get("total_tokens_in", 0),
         total_tokens_out=result.get("total_tokens_out", 0),
         total_cost_usd=result.get("total_cost_usd", 0.0),
+        trace_id=result.get("trace_id"),
     )
 
     return DataResponse(data=run)

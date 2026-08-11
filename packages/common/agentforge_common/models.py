@@ -94,6 +94,7 @@ class Run(BaseModel):
     input: str
     output: str | None = None
     status: RunStatus = RunStatus.PENDING
+    trace_id: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
 

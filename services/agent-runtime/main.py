@@ -5,12 +5,15 @@ policy enforcement, context management. Internal API called by the API Gateway.
 """
 
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 from routers.runs import router as runs_router
 
 SERVICE_NAME = "agent-runtime"
 
 app = FastAPI(title="AgentForge Agent Runtime", version="0.1.0")
 app.include_router(runs_router)
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 @app.get("/health")

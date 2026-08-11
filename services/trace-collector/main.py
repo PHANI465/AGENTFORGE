@@ -1,15 +1,17 @@
 """Trace Collector — FastAPI entry point.
 
-Receives OpenTelemetry spans emitted by the Agent Runtime, stores them, and
-serves the trace query API used by the Dashboard. Stubbed in Milestone 0;
-built out in Milestone 5 (Tracing & Observability).
+Receives span data from the Agent Runtime, stores summaries, and exposes
+Prometheus metrics for the observability pipeline. Built out in Milestone 5.
 """
 
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 SERVICE_NAME = "trace-collector"
 
 app = FastAPI(title="AgentForge Trace Collector", version="0.1.0")
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 @app.get("/health")

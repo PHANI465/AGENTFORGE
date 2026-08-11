@@ -76,6 +76,7 @@ class RunORM(Base):
     status: Mapped[RunStatus] = mapped_column(
         _str_enum(RunStatus, "run_status"), default=RunStatus.PENDING
     )
+    trace_id: Mapped[str | None] = mapped_column(default=None, index=True)
     started_at: Mapped[datetime | None] = mapped_column(default=None)
     completed_at: Mapped[datetime | None] = mapped_column(default=None)
 

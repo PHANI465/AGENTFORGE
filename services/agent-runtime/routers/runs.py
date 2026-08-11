@@ -33,4 +33,5 @@ async def run_agent(req: ExecuteRequest) -> ExecuteResponse:
         total_cost_usd=result.total_cost_usd,
         model=result.model,
         error=result.error,
+        trace_id=result.trace_id,
     )

@@ -1,4 +1,4 @@
-"""Core agent execution loop: think -> act -> observe, with safety enforcement."""
+"""Core agent execution loop: think -> act -> observe, with safety enforcement and OTel tracing."""
 
 import asyncio
 import json
@@ -7,8 +7,10 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from llm import call_llm
+from opentelemetry import trace
 from safety import CheckPoint, SafetyChecker
 from tools import ToolRegistry
+from tracing import current_trace_id, tracer
 
 BLOCKED_OUTPUT = "[BLOCKED] Response violated safety policy and was not delivered."
 
@@ -37,6 +39,7 @@ class RunResult:
     total_cost_usd: float = 0.0
     model: str = ""
     error: str | None = None
+    trace_id: str | None = None
 
 
 async def execute_agent(
@@ -52,7 +55,7 @@ async def execute_agent(
     safety_rules: list[str] | None = None,
     on_violation: str = "log",
 ) -> RunResult:
-    """Run the think->act->observe loop with safety policy enforcement."""
+    """Run the think->act->observe loop with safety policy enforcement and OTel tracing."""
     registry = ToolRegistry()
     tools_for_llm = registry.to_openai_tools(tool_names) if tool_names else None
     checker = SafetyChecker(safety_rules or [], on_violation)
@@ -62,19 +65,48 @@ async def execute_agent(
         {"role": "user", "content": user_input},
     ]
 
-    try:
-        return await asyncio.wait_for(
-            _loop(messages, model, tools_for_llm, registry, api_key,
-                  max_tokens, temperature, max_iterations, checker),
-            timeout=timeout,
-        )
-    except TimeoutError:
-        return RunResult(
-            output="", model=model,
-            error=f"Execution timed out after {timeout}s",
-        )
-    except Exception as e:
-        return RunResult(output="", model=model, error=str(e))
+    with tracer.start_as_current_span(
+        "agent.execute",
+        attributes={
+            "agent.model": model,
+            "agent.max_tokens": max_tokens,
+            "agent.temperature": temperature,
+            "agent.max_iterations": max_iterations,
+            "agent.tool_count": len(tool_names),
+            "agent.has_safety_rules": bool(safety_rules),
+        },
+    ) as root_span:
+        trace_id = current_trace_id()
+
+        try:
+            result = await asyncio.wait_for(
+                _loop(messages, model, tools_for_llm, registry, api_key,
+                      max_tokens, temperature, max_iterations, checker),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            root_span.set_status(trace.StatusCode.ERROR, f"Timeout after {timeout}s")
+            return RunResult(
+                output="", model=model, trace_id=trace_id,
+                error=f"Execution timed out after {timeout}s",
+            )
+        except Exception as e:
+            root_span.set_status(trace.StatusCode.ERROR, str(e))
+            return RunResult(output="", model=model, trace_id=trace_id, error=str(e))
+
+        result.trace_id = trace_id
+
+        if result.error:
+            root_span.set_status(trace.StatusCode.ERROR, result.error)
+        else:
+            root_span.set_status(trace.StatusCode.OK)
+
+        root_span.set_attribute("agent.total_tokens_in", result.total_tokens_in)
+        root_span.set_attribute("agent.total_tokens_out", result.total_tokens_out)
+        root_span.set_attribute("agent.total_cost_usd", result.total_cost_usd)
+        root_span.set_attribute("agent.steps_count", len(result.steps))
+
+        return result
 
 
 async def _loop(
@@ -98,14 +130,24 @@ async def _loop(
     for _ in range(max_iterations):
         # --- THINK: call the LLM ---
         step_num += 1
-        llm_resp = await call_llm(
-            model=model, messages=messages, tools=tools_for_llm,
-            api_key=api_key, max_tokens=max_tokens, temperature=temperature,
-        )
-        actual_model = llm_resp.model
-        total_in += llm_resp.tokens_in
-        total_out += llm_resp.tokens_out
-        total_cost += llm_resp.cost_usd
+        with tracer.start_as_current_span(
+            "llm.call",
+            attributes={"llm.model": model, "llm.step_number": step_num},
+        ) as llm_span:
+            llm_resp = await call_llm(
+                model=model, messages=messages, tools=tools_for_llm,
+                api_key=api_key, max_tokens=max_tokens, temperature=temperature,
+            )
+            actual_model = llm_resp.model
+            total_in += llm_resp.tokens_in
+            total_out += llm_resp.tokens_out
+            total_cost += llm_resp.cost_usd
+
+            llm_span.set_attribute("llm.tokens_in", llm_resp.tokens_in)
+            llm_span.set_attribute("llm.tokens_out", llm_resp.tokens_out)
+            llm_span.set_attribute("llm.cost_usd", llm_resp.cost_usd)
+            llm_span.set_attribute("llm.latency_ms", llm_resp.latency_ms)
+            llm_span.set_attribute("llm.tool_calls_count", len(llm_resp.tool_calls))
 
         steps.append(StepRecord(
             step_number=step_num, type="llm_call",
@@ -118,7 +160,14 @@ async def _loop(
 
         # --- POST-LLM SAFETY CHECK ---
         if checker.has_rules and llm_resp.content:
-            check_result = checker.check(llm_resp.content, CheckPoint.POST_LLM)
+            with tracer.start_as_current_span(
+                "safety.check",
+                attributes={"safety.check_point": "post_llm", "safety.step_number": step_num + 1},
+            ) as safety_span:
+                check_result = checker.check(llm_resp.content, CheckPoint.POST_LLM)
+                safety_span.set_attribute("safety.passed", check_result.passed)
+                safety_span.set_attribute("safety.violation_count", len(check_result.violations))
+
             if not check_result.passed:
                 step_num += 1
                 violation_details = [asdict(v) for v in check_result.violations]
@@ -172,7 +221,14 @@ async def _loop(
             # --- PRE-TOOL SAFETY CHECK ---
             args_text = json.dumps(args)
             if checker.has_rules:
-                tool_check = checker.check(args_text, CheckPoint.PRE_TOOL)
+                with tracer.start_as_current_span(
+                    "safety.check",
+                    attributes={"safety.check_point": "pre_tool", "safety.tool_name": tool_name},
+                ) as safety_span:
+                    tool_check = checker.check(args_text, CheckPoint.PRE_TOOL)
+                    safety_span.set_attribute("safety.passed", tool_check.passed)
+                    safety_span.set_attribute("safety.violation_count", len(tool_check.violations))
+
                 if not tool_check.passed:
                     violation_details = [asdict(v) for v in tool_check.violations]
                     steps.append(StepRecord(
@@ -194,18 +250,26 @@ async def _loop(
                         })
                         continue
 
-            callable_fn = registry.get_callable(tool_name)
-            tool_latency = 0
+            with tracer.start_as_current_span(
+                "tool.execute",
+                attributes={"tool.name": tool_name, "tool.step_number": step_num},
+            ) as tool_span:
+                callable_fn = registry.get_callable(tool_name)
+                tool_latency = 0
 
-            if callable_fn is None:
-                tool_result = f"Error: unknown tool '{tool_name}'"
-            else:
-                start = time.monotonic()
-                try:
-                    tool_result = await callable_fn(**args)
-                except Exception as e:
-                    tool_result = f"Error executing tool: {e}"
-                tool_latency = int((time.monotonic() - start) * 1000)
+                if callable_fn is None:
+                    tool_result = f"Error: unknown tool '{tool_name}'"
+                    tool_span.set_status(trace.StatusCode.ERROR, tool_result)
+                else:
+                    start = time.monotonic()
+                    try:
+                        tool_result = await callable_fn(**args)
+                    except Exception as e:
+                        tool_result = f"Error executing tool: {e}"
+                        tool_span.set_status(trace.StatusCode.ERROR, str(e))
+                    tool_latency = int((time.monotonic() - start) * 1000)
+
+                tool_span.set_attribute("tool.latency_ms", tool_latency)
 
             steps.append(StepRecord(
                 step_number=step_num, type="tool_call",
