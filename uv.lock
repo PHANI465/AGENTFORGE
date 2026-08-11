@@ -488,6 +488,8 @@ source = { virtual = "services/eval-service" }
 dependencies = [
     { name = "agentforge-common" },
     { name = "fastapi" },
+    { name = "httpx" },
+    { name = "litellm" },
     { name = "prometheus-fastapi-instrumentator" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -496,6 +498,8 @@ dependencies = [
 requires-dist = [
     { name = "agentforge-common", editable = "packages/common" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "litellm", specifier = ">=1.40" },
     { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]

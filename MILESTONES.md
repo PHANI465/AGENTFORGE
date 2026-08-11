@@ -145,22 +145,28 @@
 
 ---
 
-## Milestone 6: Evaluation Pipeline ← START HERE
+## Milestone 6: Evaluation Pipeline ✅ DONE (2026-08-11)
 **Goal**: Define test suites, run agents against them, get scores.
 
 **Deliverables:**
-- [ ] Eval service with test suite CRUD
-- [ ] Test case runner (calls Agent Runtime for each case)
-- [ ] Scoring: accuracy (LLM-as-judge), latency, cost, tool correctness
-- [ ] Version comparison endpoint
-- [ ] Sample eval suite for a demo agent
-- [ ] Integration tests
+- [x] Eval service with test suite CRUD — `services/api-gateway/crud_evals.py` + `routers/evals.py` (suites owned by the Gateway's Postgres, same pattern as agents)
+- [x] Test case runner (calls Agent Runtime for each case) — `services/eval-service/runner.py`, stateless, calls `POST /api/v1/run` on agent-runtime per test case
+- [x] Scoring: accuracy (LLM-as-judge), latency, cost, tool correctness — `services/eval-service/scoring.py`: `judge_accuracy()` (LiteLLM call asking the agent's own model to grade output vs. expected), `tool_correctness()` (expected vs. actual tool-call set), `combine_score()` (averages sub-scores, fails on any safety violation)
+- [x] Version comparison endpoint — `GET /api/v1/eval-runs/{id}/compare/{other_id}`, returns both runs' summaries + pass-rate/latency/cost deltas
+- [x] Sample eval suite for a demo agent — `scripts/seed.py` already seeds a suite with tool-call and safety test cases (from Milestone 1)
+- [x] Integration tests — `tests/integration/api_gateway/test_evals_api.py` (7 tests) + `tests/unit/eval_service/test_scoring.py` (12 tests)
 
-**Done when**: Can create a test suite with 10 cases, run it, and get a scored report with pass/fail per case.
+**Done when**: Can create a test suite with 10 cases, run it, and get a scored report with pass/fail per case. ✅ **Fully verified — 78/78 tests pass (12 unit scoring + 8 unit tracing + 20 unit safety + 9 unit models + 29 integration across agents/runs/safety/traces/evals), ruff clean.**
+
+**Architecture notes:**
+- Eval-service is stateless, mirroring agent-runtime's design: it owns no DB connection, just executes test cases and returns scored results. The API Gateway owns all persistence (EvalSuite/EvalRun/EvalResult), matching the Run persistence pattern from Milestone 3.
+- Flow: `POST /api/v1/eval-suites/{id}/run` on the Gateway → looks up the suite + its agent's config → creates a `RUNNING` EvalRun row → calls `POST /api/v1/execute-suite` on eval-service with the agent config + test cases → eval-service loops test cases, calling agent-runtime once per case, then scores each → Gateway persists `EvalResult` rows and a computed summary (pass_rate, avg_latency_ms, total_cost_usd, total_tokens_used) on the `EvalRun`.
+- Accuracy scoring only runs when a test case has an `expected_output` (uses the agent's own model as judge, temperature 0, strict JSON response). Tool correctness only runs when a test case has `expected_tool_calls`. A test case with neither defaults to passing (nothing to grade) unless a safety rule was violated during its run.
+- `combine_score()` and `tool_correctness()` are pure functions (no LLM call) — fully unit-tested. `judge_accuracy()` is only exercised through mocked eval-service responses in the integration tests, matching how `call_llm()` is handled in Milestone 3.
 
 ---
 
-## Milestone 7: Token Optimization
+## Milestone 7: Token Optimization ← START HERE
 **Goal**: Smart routing, caching, and compression are live and measurable.
 
 **Deliverables:**

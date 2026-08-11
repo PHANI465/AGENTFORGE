@@ -1,16 +1,18 @@
 """Eval Service — FastAPI entry point.
 
-Test suite CRUD, test case runner, scoring (accuracy, latency, cost, tool
-correctness), version comparison. Stubbed in Milestone 0; built out in
-Milestone 6 (Evaluation Pipeline).
+Executes eval suites: runs each test case against an agent via the Agent
+Runtime, scores results (LLM-as-judge accuracy, tool correctness), and
+returns scored results to the API Gateway for persistence.
 """
 
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
+from routers.evals import router as evals_router
 
 SERVICE_NAME = "eval-service"
 
 app = FastAPI(title="AgentForge Eval Service", version="0.1.0")
+app.include_router(evals_router)
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 

@@ -17,6 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from routers.agents import router as agents_router
+from routers.evals import router as evals_router
 from routers.runs import router as runs_router
 from routers.traces import router as traces_router
 
@@ -27,6 +28,7 @@ app = FastAPI(title="AgentForge API Gateway", version="0.1.0")
 app.include_router(agents_router)
 app.include_router(runs_router)
 app.include_router(traces_router)
+app.include_router(evals_router)
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 

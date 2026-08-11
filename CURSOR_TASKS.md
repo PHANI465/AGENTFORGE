@@ -120,10 +120,27 @@ Your Cursor tasks now:
 - [ ] Visit Grafana at `http://localhost:3000` (admin/agentforge) and check the AgentForge dashboard
 - [ ] Visit Prometheus at `http://localhost:9090` and check that all targets are up
 
-## Next: Milestone 6 — Evaluation Pipeline
+## Milestone 6 — Evaluation Pipeline ✅ FULLY DONE (2026-08-11)
 
-Claude Code will handle this next: eval service with test suite CRUD, test case
-runner, scoring (accuracy, latency, cost, tool correctness), version comparison.
+Full eval pipeline: eval suite CRUD on the API Gateway (`/api/v1/eval-suites`),
+a stateless eval-service that runs each test case against an agent via
+agent-runtime and scores it (LLM-as-judge accuracy + tool-call correctness),
+persisted `EvalRun`/`EvalResult` rows with a computed summary (pass rate, avg
+latency, total cost, total tokens), and a version-comparison endpoint
+(`GET /api/v1/eval-runs/{id}/compare/{other_id}`). 78/78 tests passing
+(12 new scoring unit tests + 7 new eval integration tests), ruff clean.
+
+Your Cursor tasks now:
+- [ ] **Commit and push Milestone 6 changes — no AI co-author trailer**
+- [ ] `docker compose up -d --build` to rebuild all services (eval-service now does real work instead of being a stub)
+- [ ] Try it: `POST /api/v1/eval-suites` with a suite (or use the one `scripts/seed.py` already creates), then `POST /api/v1/eval-suites/{id}/run`, then `GET /api/v1/eval-runs/{id}` to see the scored results
+- [ ] Run the same suite twice against slightly different agent configs, then hit `GET /api/v1/eval-runs/{id}/compare/{other_id}` to see the pass-rate/latency/cost deltas
+
+## Next: Milestone 7 — Token Optimization
+
+Claude Code will handle this next: LiteLLM routing rules (simple→mini, complex→4o),
+Redis-backed response caching, optional LLMLingua prompt compression, cost
+comparison dashboard, budget limit enforcement.
 
 ---
 
