@@ -17,6 +17,8 @@ class ExecuteRequest(BaseModel):
     temperature: float = 0.7
     timeout: int = 120
     max_iterations: int = 10
+    safety_rules: list[str] = Field(default_factory=list)
+    on_violation: str = "log"
 
 
 class StepOut(BaseModel):

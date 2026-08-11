@@ -60,6 +60,8 @@ async def run_agent(
         "temperature": agent.config.temperature,
         "timeout": agent.config.timeout,
         "max_iterations": 10,
+        "safety_rules": agent.safety_policy.rules,
+        "on_violation": agent.safety_policy.on_violation.value,
     }
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(agent.config.timeout + 10)) as client:

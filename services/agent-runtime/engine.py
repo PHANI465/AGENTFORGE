@@ -1,18 +1,21 @@
-"""Core agent execution loop: think -> act -> observe."""
+"""Core agent execution loop: think -> act -> observe, with safety enforcement."""
 
 import asyncio
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from llm import call_llm
+from safety import CheckPoint, SafetyChecker
 from tools import ToolRegistry
+
+BLOCKED_OUTPUT = "[BLOCKED] Response violated safety policy and was not delivered."
 
 
 @dataclass
 class StepRecord:
-    """One step in the execution trace (an LLM call or a tool call)."""
+    """One step in the execution trace (an LLM call, tool call, or safety check)."""
 
     step_number: int
     type: str
@@ -46,10 +49,13 @@ async def execute_agent(
     temperature: float = 0.7,
     timeout: int = 120,
     max_iterations: int = 10,
+    safety_rules: list[str] | None = None,
+    on_violation: str = "log",
 ) -> RunResult:
-    """Run the think->act->observe loop until the LLM stops calling tools."""
+    """Run the think->act->observe loop with safety policy enforcement."""
     registry = ToolRegistry()
     tools_for_llm = registry.to_openai_tools(tool_names) if tool_names else None
+    checker = SafetyChecker(safety_rules or [], on_violation)
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
@@ -59,7 +65,7 @@ async def execute_agent(
     try:
         return await asyncio.wait_for(
             _loop(messages, model, tools_for_llm, registry, api_key,
-                  max_tokens, temperature, max_iterations),
+                  max_tokens, temperature, max_iterations, checker),
             timeout=timeout,
         )
     except TimeoutError:
@@ -80,6 +86,7 @@ async def _loop(
     max_tokens: int,
     temperature: float,
     max_iterations: int,
+    checker: SafetyChecker,
 ) -> RunResult:
     steps: list[StepRecord] = []
     total_in = 0
@@ -108,6 +115,29 @@ async def _loop(
             tokens_in=llm_resp.tokens_in, tokens_out=llm_resp.tokens_out,
             latency_ms=llm_resp.latency_ms,
         ))
+
+        # --- POST-LLM SAFETY CHECK ---
+        if checker.has_rules and llm_resp.content:
+            check_result = checker.check(llm_resp.content, CheckPoint.POST_LLM)
+            if not check_result.passed:
+                step_num += 1
+                violation_details = [asdict(v) for v in check_result.violations]
+                steps.append(StepRecord(
+                    step_number=step_num, type="safety_check",
+                    input={"check_point": "post_llm",
+                            "content_length": len(llm_resp.content)},
+                    output={"passed": False,
+                            "violations": violation_details,
+                            "action": checker.on_violation},
+                ))
+
+                if checker.should_block:
+                    return RunResult(
+                        output=BLOCKED_OUTPUT, steps=steps,
+                        total_tokens_in=total_in, total_tokens_out=total_out,
+                        total_cost_usd=total_cost, model=actual_model,
+                        error="Safety policy violation: response blocked",
+                    )
 
         if not llm_resp.tool_calls:
             return RunResult(
@@ -138,6 +168,31 @@ async def _loop(
                 args = json.loads(tc["arguments"]) if tc["arguments"] else {}
             except json.JSONDecodeError:
                 args = {}
+
+            # --- PRE-TOOL SAFETY CHECK ---
+            args_text = json.dumps(args)
+            if checker.has_rules:
+                tool_check = checker.check(args_text, CheckPoint.PRE_TOOL)
+                if not tool_check.passed:
+                    violation_details = [asdict(v) for v in tool_check.violations]
+                    steps.append(StepRecord(
+                        step_number=step_num, type="safety_check",
+                        input={"check_point": "pre_tool",
+                                "tool_name": tool_name,
+                                "arguments": args},
+                        output={"passed": False,
+                                "violations": violation_details,
+                                "action": checker.on_violation},
+                    ))
+
+                    if checker.should_block:
+                        tool_result = f"[BLOCKED] Tool call '{tool_name}' violated safety policy"
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": tool_result,
+                        })
+                        continue
 
             callable_fn = registry.get_callable(tool_name)
             tool_latency = 0

@@ -98,22 +98,31 @@
 
 ---
 
-## Milestone 4: Safety Policy Enforcement ← START HERE
+## Milestone 4: Safety Policy Enforcement ✅ DONE (2026-08-11)
 **Goal**: Define safety rules that are checked before every tool call and LLM response.
 
 **Deliverables:**
-- [ ] Safety policy model (rules as strings, enforcement mode)
-- [ ] Pre-tool-call safety check middleware
-- [ ] Post-LLM-response safety check
-- [ ] Safety violation logging
-- [ ] Violation response (block, warn, or log depending on policy)
-- [ ] Tests with deliberate violation scenarios
+- [x] Safety policy model (rules as strings, enforcement mode) — `SafetyPolicy` Pydantic model (M1), `SafetyChecker` class (`services/agent-runtime/safety.py`)
+- [x] Pre-tool-call safety check middleware — `CheckPoint.PRE_TOOL` in engine loop, scans tool arguments before execution
+- [x] Post-LLM-response safety check — `CheckPoint.POST_LLM` in engine loop, scans LLM output text after each response
+- [x] Safety violation logging — violations recorded as `safety_check` type RunStep rows in Postgres
+- [x] Violation response (block, warn, or log depending on policy) — `on_violation` field: block returns `[BLOCKED]` message and marks run failed, warn continues but records violation, log records silently
+- [x] Tests with deliberate violation scenarios — 20 unit tests (`tests/unit/agent_runtime/test_safety.py`) + 4 integration tests (`tests/integration/api_gateway/test_safety_api.py`)
 
-**Done when**: An agent with a policy like "never share customer PII" actually blocks a response containing PII.
+**Done when**: An agent with a policy like "never share customer PII" actually blocks a response containing PII. ✅ **Fully verified — 47/47 tests pass (20 unit safety + 9 unit models + 14 integration agent/run + 4 integration safety), ruff clean.**
+
+**Architecture notes:**
+- `SafetyChecker` supports two rule types: PII detection (regex patterns for email, phone, SSN, credit card — activated when any rule contains "pii") and keyword blocking (rules starting with `block_keywords:word1,word2`).
+- Two check points in the execution loop: post-LLM (scan response text) and pre-tool (scan tool arguments). Both produce `SafetyViolation` records with the matched text, pattern name, and check point.
+- Enforcement modes: `block` immediately stops the run and returns a blocked message; `warn` continues but records violations; `log` records silently.
+- Safety policy flows from the API Gateway (agent's `safety_policy.rules` + `safety_policy.on_violation`) through the runtime HTTP payload to the engine's `SafetyChecker`.
+
+**Bugs caught and fixed:**
+1. Test isolation conflict: when running `pytest tests/` (unit + integration together), the unit test's `sys.path.insert(0, agent-runtime-dir)` shadowed the api-gateway's `main.py` module, causing all integration tests to fail with 500/404. Fixed by using `sys.path.append()` instead of `sys.path.insert(0, ...)` in the unit test.
 
 ---
 
-## Milestone 5: Tracing & Observability
+## Milestone 5: Tracing & Observability ← START HERE
 **Goal**: Every agent run produces a full trace viewable via API.
 
 **Deliverables:**

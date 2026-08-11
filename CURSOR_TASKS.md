@@ -88,11 +88,26 @@ Your Cursor tasks now:
 - [ ] **Commit and push Milestones 2 + 3 changes together — no AI co-author trailer** (still pending)
 - [ ] Customize `README.md` with your GitHub username and personal branding (cosmetic, optional)
 
-## Current: Milestone 4 — Safety Policy Enforcement
+## Milestone 4 — Safety Policy Enforcement ✅ FULLY DONE (2026-08-11)
 
-Claude Code will handle this next: safety rules checked before every tool call
-and LLM response, violation logging, block/warn/log enforcement modes.
-No Cursor tasks yet — they'll appear here once scaffolded.
+Safety checker with PII detection (email, phone, SSN, credit card regex) and
+keyword blocking, integrated at two check points in the execution engine
+(post-LLM response, pre-tool call). Three enforcement modes: block (stops run,
+returns `[BLOCKED]` message), warn (continues but records), log (silent). Safety
+policy flows from the agent's config through the API Gateway → Runtime HTTP call.
+47/47 tests passing (20 unit safety + 9 unit models + 14 integration agent/run +
+4 integration safety), ruff clean.
+
+Your Cursor tasks now:
+- [ ] **Commit and push Milestones 2 + 3 + 4 changes together — no AI co-author trailer** (still pending)
+- [ ] Try safety enforcement: create an agent with `safety_policy.rules: ["never share customer PII"]` and `on_violation: "block"`, then run it with a prompt that would elicit PII — verify the response is blocked
+- [ ] Customize `README.md` with your GitHub username and personal branding (cosmetic, optional)
+
+## Next: Milestone 5 — Tracing & Observability
+
+Claude Code will handle this next: OpenTelemetry spans for LLM/tool/safety calls,
+trace storage in PostgreSQL, `GET /api/v1/runs/{id}/trace` endpoint, Prometheus
+metrics, Grafana dashboard config, Docker Compose updated with Prometheus + Grafana.
 
 ---
 
