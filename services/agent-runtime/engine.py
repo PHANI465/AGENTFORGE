@@ -1,4 +1,5 @@
-"""Core agent execution loop: think -> act -> observe, with safety enforcement and OTel tracing."""
+"""Core agent execution loop: think -> act -> observe, with safety enforcement,
+OTel tracing, and token-optimization (smart routing, caching, compression)."""
 
 import asyncio
 import json
@@ -6,8 +7,25 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from agentforge_common.models import TokenOptimizationConfig
+from compression import compress_content
 from llm import call_llm
+from metrics import (
+    AGENT_RUN_DURATION,
+    COMPRESSION_SAVED_CHARS_TOTAL,
+    COST_USD_TOTAL,
+    LLM_CACHE_HITS_TOTAL,
+    LLM_CACHE_MISSES_TOTAL,
+    LLM_CALL_DURATION,
+    LLM_CALLS_TOTAL,
+    MODEL_ROUTING_TOTAL,
+    SAFETY_VIOLATIONS_TOTAL,
+    TOKENS_IN_TOTAL,
+    TOKENS_OUT_TOTAL,
+    TOOL_CALLS_TOTAL,
+)
 from opentelemetry import trace
+from routing import pick_model
 from safety import CheckPoint, SafetyChecker
 from tools import ToolRegistry
 from tracing import current_trace_id, tracer
@@ -54,11 +72,25 @@ async def execute_agent(
     max_iterations: int = 10,
     safety_rules: list[str] | None = None,
     on_violation: str = "log",
+    optimization: TokenOptimizationConfig | None = None,
 ) -> RunResult:
-    """Run the think->act->observe loop with safety policy enforcement and OTel tracing."""
+    """Run the think->act->observe loop with safety enforcement, tracing, and
+    token-optimization (smart routing, response caching, prompt compression)."""
+    optimization = optimization or TokenOptimizationConfig()
     registry = ToolRegistry()
     tools_for_llm = registry.to_openai_tools(tool_names) if tool_names else None
     checker = SafetyChecker(safety_rules or [], on_violation)
+
+    effective_model, routing_tier = pick_model(
+        user_input=user_input,
+        configured_model=model,
+        enable_smart_routing=optimization.enable_smart_routing,
+        simple_model=optimization.simple_model,
+        complex_model=optimization.complex_model,
+        complexity_threshold=optimization.complexity_threshold,
+        has_tools=bool(tool_names),
+    )
+    MODEL_ROUTING_TOTAL.labels(tier=routing_tier).inc()
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
@@ -68,7 +100,8 @@ async def execute_agent(
     with tracer.start_as_current_span(
         "agent.execute",
         attributes={
-            "agent.model": model,
+            "agent.model": effective_model,
+            "agent.routing_tier": routing_tier,
             "agent.max_tokens": max_tokens,
             "agent.temperature": temperature,
             "agent.max_iterations": max_iterations,
@@ -77,22 +110,25 @@ async def execute_agent(
         },
     ) as root_span:
         trace_id = current_trace_id()
+        start = time.monotonic()
 
         try:
             result = await asyncio.wait_for(
-                _loop(messages, model, tools_for_llm, registry, api_key,
-                      max_tokens, temperature, max_iterations, checker),
+                _loop(messages, effective_model, tools_for_llm, registry, api_key,
+                      max_tokens, temperature, max_iterations, checker, optimization),
                 timeout=timeout,
             )
         except TimeoutError:
             root_span.set_status(trace.StatusCode.ERROR, f"Timeout after {timeout}s")
             return RunResult(
-                output="", model=model, trace_id=trace_id,
+                output="", model=effective_model, trace_id=trace_id,
                 error=f"Execution timed out after {timeout}s",
             )
         except Exception as e:
             root_span.set_status(trace.StatusCode.ERROR, str(e))
-            return RunResult(output="", model=model, trace_id=trace_id, error=str(e))
+            return RunResult(output="", model=effective_model, trace_id=trace_id, error=str(e))
+        finally:
+            AGENT_RUN_DURATION.observe(time.monotonic() - start)
 
         result.trace_id = trace_id
 
@@ -119,6 +155,7 @@ async def _loop(
     temperature: float,
     max_iterations: int,
     checker: SafetyChecker,
+    optimization: TokenOptimizationConfig,
 ) -> RunResult:
     steps: list[StepRecord] = []
     total_in = 0
@@ -137,23 +174,36 @@ async def _loop(
             llm_resp = await call_llm(
                 model=model, messages=messages, tools=tools_for_llm,
                 api_key=api_key, max_tokens=max_tokens, temperature=temperature,
+                enable_caching=optimization.enable_caching,
             )
             actual_model = llm_resp.model
             total_in += llm_resp.tokens_in
             total_out += llm_resp.tokens_out
             total_cost += llm_resp.cost_usd
 
+            LLM_CALLS_TOTAL.labels(model=actual_model).inc()
+            TOKENS_IN_TOTAL.labels(model=actual_model).inc(llm_resp.tokens_in)
+            TOKENS_OUT_TOTAL.labels(model=actual_model).inc(llm_resp.tokens_out)
+            COST_USD_TOTAL.labels(model=actual_model).inc(llm_resp.cost_usd)
+            LLM_CALL_DURATION.labels(model=actual_model).observe(llm_resp.latency_ms / 1000)
+            if llm_resp.cache_hit:
+                LLM_CACHE_HITS_TOTAL.labels(model=actual_model).inc()
+            else:
+                LLM_CACHE_MISSES_TOTAL.labels(model=actual_model).inc()
+
             llm_span.set_attribute("llm.tokens_in", llm_resp.tokens_in)
             llm_span.set_attribute("llm.tokens_out", llm_resp.tokens_out)
             llm_span.set_attribute("llm.cost_usd", llm_resp.cost_usd)
             llm_span.set_attribute("llm.latency_ms", llm_resp.latency_ms)
             llm_span.set_attribute("llm.tool_calls_count", len(llm_resp.tool_calls))
+            llm_span.set_attribute("llm.cache_hit", llm_resp.cache_hit)
 
         steps.append(StepRecord(
             step_number=step_num, type="llm_call",
             input={"messages_count": len(messages)},
             output={"content": llm_resp.content,
-                    "tool_calls_count": len(llm_resp.tool_calls)},
+                    "tool_calls_count": len(llm_resp.tool_calls),
+                    "cache_hit": llm_resp.cache_hit},
             tokens_in=llm_resp.tokens_in, tokens_out=llm_resp.tokens_out,
             latency_ms=llm_resp.latency_ms,
         ))
@@ -171,6 +221,10 @@ async def _loop(
             if not check_result.passed:
                 step_num += 1
                 violation_details = [asdict(v) for v in check_result.violations]
+                for v in check_result.violations:
+                    SAFETY_VIOLATIONS_TOTAL.labels(
+                        check_point=v.check_point, action=checker.on_violation
+                    ).inc()
                 steps.append(StepRecord(
                     step_number=step_num, type="safety_check",
                     input={"check_point": "post_llm",
@@ -231,6 +285,10 @@ async def _loop(
 
                 if not tool_check.passed:
                     violation_details = [asdict(v) for v in tool_check.violations]
+                    for v in tool_check.violations:
+                        SAFETY_VIOLATIONS_TOTAL.labels(
+                            check_point=v.check_point, action=checker.on_violation
+                        ).inc()
                     steps.append(StepRecord(
                         step_number=step_num, type="safety_check",
                         input={"check_point": "pre_tool",
@@ -270,6 +328,7 @@ async def _loop(
                     tool_latency = int((time.monotonic() - start) * 1000)
 
                 tool_span.set_attribute("tool.latency_ms", tool_latency)
+                TOOL_CALLS_TOTAL.labels(tool_name=tool_name).inc()
 
             steps.append(StepRecord(
                 step_number=step_num, type="tool_call",
@@ -278,10 +337,21 @@ async def _loop(
                 latency_ms=tool_latency,
             ))
 
+            tool_result_str = str(tool_result)
+            if optimization.enable_compression:
+                compressed, comp_stats = compress_content(
+                    tool_result_str, optimization.compression_threshold_chars
+                )
+                if comp_stats["strategy"] != "none":
+                    saved = comp_stats["original_chars"] - comp_stats["compressed_chars"]
+                    if saved > 0:
+                        COMPRESSION_SAVED_CHARS_TOTAL.inc(saved)
+                tool_result_str = compressed
+
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc["id"],
-                "content": str(tool_result),
+                "content": tool_result_str,
             })
 
     return RunResult(

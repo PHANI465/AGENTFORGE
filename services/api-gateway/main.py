@@ -8,6 +8,7 @@ routing to Agent Runtime/Eval Service lands in later milestones.
 from agentforge_common.envelope import ErrorDetail, ErrorResponse
 from agentforge_common.exceptions import (
     AgentForgeError,
+    BudgetExceededError,
     ConflictError,
     NotFoundError,
     UnauthorizedError,
@@ -17,6 +18,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from routers.agents import router as agents_router
+from routers.analytics import router as analytics_router
 from routers.evals import router as evals_router
 from routers.runs import router as runs_router
 from routers.traces import router as traces_router
@@ -29,6 +31,7 @@ app.include_router(agents_router)
 app.include_router(runs_router)
 app.include_router(traces_router)
 app.include_router(evals_router)
+app.include_router(analytics_router)
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
@@ -36,6 +39,7 @@ _STATUS_BY_ERROR = {
     NotFoundError: status.HTTP_404_NOT_FOUND,
     UnauthorizedError: status.HTTP_401_UNAUTHORIZED,
     ConflictError: status.HTTP_409_CONFLICT,
+    BudgetExceededError: status.HTTP_429_TOO_MANY_REQUESTS,
 }
 
 

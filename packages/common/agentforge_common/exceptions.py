@@ -31,3 +31,7 @@ class UnauthorizedError(AgentForgeError):
 
 class ConflictError(AgentForgeError):
     code = "conflict"
+
+
+class BudgetExceededError(AgentForgeError):
+    code = "budget_exceeded"

@@ -25,11 +25,25 @@ class SafetyPolicy(BaseModel):
     on_violation: SafetyViolationAction = SafetyViolationAction.LOG
 
 
+class TokenOptimizationConfig(BaseModel):
+    """Per-agent knobs for LLM cost/latency optimization (Milestone 7)."""
+
+    enable_caching: bool = True
+    enable_smart_routing: bool = False
+    simple_model: str | None = None
+    complex_model: str | None = None
+    complexity_threshold: int = 200
+    enable_compression: bool = False
+    compression_threshold_chars: int = 2000
+    daily_budget_usd: float | None = None
+
+
 class AgentConfig(BaseModel):
     max_tokens: int = 1024
     temperature: float = 0.7
     timeout: int = 30
     retry_policy: dict[str, Any] | None = None
+    optimization: TokenOptimizationConfig = Field(default_factory=TokenOptimizationConfig)
 
 
 class ToolSpec(BaseModel):

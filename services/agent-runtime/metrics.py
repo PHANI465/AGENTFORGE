@@ -53,3 +53,26 @@ LLM_CALL_DURATION = Histogram(
     ["model"],
     buckets=[0.1, 0.5, 1, 2, 5, 10, 30],
 )
+
+LLM_CACHE_HITS_TOTAL = Counter(
+    "agentforge_llm_cache_hits_total",
+    "LLM calls served from the Redis response cache",
+    ["model"],
+)
+
+LLM_CACHE_MISSES_TOTAL = Counter(
+    "agentforge_llm_cache_misses_total",
+    "LLM calls that were not in the Redis response cache",
+    ["model"],
+)
+
+MODEL_ROUTING_TOTAL = Counter(
+    "agentforge_model_routing_total",
+    "Model tier chosen by smart routing",
+    ["tier"],
+)
+
+COMPRESSION_SAVED_CHARS_TOTAL = Counter(
+    "agentforge_compression_saved_chars_total",
+    "Characters removed from tool-result content by prompt compression",
+)

@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from agentforge_common.models import TokenOptimizationConfig
 from pydantic import BaseModel, Field
 
 
@@ -19,6 +20,7 @@ class ExecuteRequest(BaseModel):
     max_iterations: int = 10
     safety_rules: list[str] = Field(default_factory=list)
     on_violation: str = "log"
+    optimization: TokenOptimizationConfig = Field(default_factory=TokenOptimizationConfig)
 
 
 class StepOut(BaseModel):

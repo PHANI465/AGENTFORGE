@@ -7,11 +7,24 @@ from typing import Any
 from agentforge_common.enums import RunStatus, RunStepType
 from agentforge_common.models import Run
 from agentforge_common.orm import CostRecordORM, RunORM, RunStepORM
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _step_type(raw: str) -> RunStepType:
     return RunStepType(raw)
+
+
+async def get_agent_spend_today(session: AsyncSession, agent_id: uuid.UUID) -> float:
+    """Sum of CostRecord.cost_usd for this agent since midnight UTC."""
+    start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    result = await session.execute(
+        select(func.coalesce(func.sum(CostRecordORM.cost_usd), 0)).where(
+            CostRecordORM.agent_id == agent_id,
+            CostRecordORM.created_at >= start_of_day,
+        )
+    )
+    return float(result.scalar_one())
 
 
 async def create_run(

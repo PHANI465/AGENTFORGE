@@ -24,6 +24,7 @@ async def run_agent(req: ExecuteRequest) -> ExecuteResponse:
         max_iterations=req.max_iterations,
         safety_rules=req.safety_rules,
         on_violation=req.on_violation,
+        optimization=req.optimization,
     )
     return ExecuteResponse(
         output=result.output,

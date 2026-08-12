@@ -166,21 +166,37 @@
 
 ---
 
-## Milestone 7: Token Optimization ← START HERE
+## Milestone 7: Token Optimization ✅ DONE (2026-08-11)
 **Goal**: Smart routing, caching, and compression are live and measurable.
 
 **Deliverables:**
-- [ ] LiteLLM config with routing rules (simple → mini, complex → 4o)
-- [ ] Redis-backed response caching
-- [ ] LLMLingua integration (optional per agent)
-- [ ] Cost comparison dashboard (with vs without optimization)
-- [ ] Budget limit enforcement (per agent, per day)
+- [x] LiteLLM config with routing rules (simple → mini, complex → 4o) — `services/agent-runtime/routing.py`, opt-in per agent via `TokenOptimizationConfig`
+- [x] Redis-backed response caching — `services/agent-runtime/llm.py`, wires `litellm.Cache(type="redis")` off the existing `REDIS_URL` env var; exact-match, on by default, disable per-agent
+- [x] LLMLingua integration (optional per agent) — `services/agent-runtime/compression.py`: real LLMLingua if installed, otherwise a dependency-free fallback (whitespace collapse + head/tail truncation) so the platform doesn't force a multi-GB torch install just to run locally
+- [x] Cost comparison dashboard (with vs without optimization) — `GET /api/v1/analytics/costs` + `/usage` (historical Postgres aggregation) and 4 new Grafana panels (cache hit rate, routing tier split, compression savings, hits-vs-misses) for the live operational view
+- [x] Budget limit enforcement (per agent, per day) — `TokenOptimizationConfig.daily_budget_usd`, checked against `CostRecord` spend-since-midnight-UTC before every run; over-budget returns `429 budget_exceeded`
 
-**Done when**: Same workload costs measurably less with optimization enabled. Dashboard shows the savings.
+**Done when**: Same workload costs measurably less with optimization enabled. Dashboard shows the savings. ✅ **Fully verified — 99/99 tests pass (7 unit routing + 6 unit compression + everything from M0–M6 + 4 budget/optimization-payload integration + 4 analytics integration), ruff clean.**
+
+**Architecture notes:**
+- All optimization knobs live on one nested `TokenOptimizationConfig` (part of `AgentConfig`, stored in the existing `agents.config` JSONB column — no migration needed): `enable_caching`, `enable_smart_routing` + `simple_model`/`complex_model`/`complexity_threshold`, `enable_compression` + `compression_threshold_chars`, `daily_budget_usd`. The API Gateway forwards the whole block to agent-runtime on every run; agent-runtime is still stateless.
+- Routing is decided once per run from the initial user input (not re-evaluated per loop iteration), using a simple heuristic: any tool availability, or input length over `complexity_threshold`, routes to `complex_model`; everything else routes to `simple_model`. Falls back to the agent's configured model whenever routing is off or either tier model is unset.
+- Caching reuses LiteLLM's own Redis cache (per ADR-001 — don't rebuild what LiteLLM already does) rather than hand-rolling one. Cache-hit detection reads `response._hidden_params["cache_hit"]`; each LLM call increments a cache hit or miss counter regardless.
+- Compression only touches tool-result content re-entering the conversation (never the system prompt or user input), and only above a per-agent character threshold — keeps the fallback strategy's information loss bounded to exactly the content most likely to be re-summarized anyway.
+- Budget enforcement happens at the API Gateway, before the HTTP call to agent-runtime — an over-budget request never reaches the LLM, so it costs nothing beyond a Postgres read.
+
+**Bugs caught and fixed:**
+1. Custom `agentforge_*` Prometheus metrics (LLM calls, tokens, cost, tool calls, safety violations, run/LLM duration) were defined in `metrics.py` back in Milestone 5 but never actually imported or incremented anywhere — the Grafana panels built on them were fed by nothing until now. Fixed while wiring the new M7 metrics into `engine.py`, since it touched the same code paths anyway.
+2. The fallback prompt compressor's head/tail truncation could slice mid-whitespace, leaving a doubled space at the join point (caught by `test_whitespace_is_collapsed_when_compression_kicks_in`). Fixed by stripping the trailing/leading whitespace off the head and tail slices before inserting the truncation marker.
+
+**Bugs caught during live manual verification (2026-08-12, not caught by automated tests since those mock the runtime call):**
+3. **Cache hits were still billed the full notional cost.** `litellm.completion_cost()` was called on every response regardless of `cache_hit`, so a call served free from Redis still added its token-based estimated cost to the run's total — which flows straight into `CostRecord` and therefore into budget enforcement. In practice this meant caching saved latency but not a single cent of *tracked* spend, silently defeating the point of the budget-limit feature. Caught by comparing `total_cost_usd_delta` on two back-to-back identical eval runs and finding it was exactly `0.0` despite an obvious latency drop from caching. Fixed in `llm.py`: `cost_usd` is now forced to `0.0` whenever `cache_hit` is true; token counts are still reported for observability, just not billed. Verified live afterward: an identical eval suite run twice back-to-back went from `$0.0001338` to `$0.00003405` — a real ~75% cost drop on the cache-hit run.
+4. **Cache TTL defaulted to ~25 seconds.** `litellm.Cache(type="redis", url=...)` was constructed with no explicit `ttl`, so it fell back to LiteLLM's own short default — too short to catch the realistic case of a user re-asking the same thing a minute or two later. Caught by running the same eval suite three times: run 2 (15s after run 1) showed clear cache hits, but run 3 (over a minute later) showed none, and a direct `redis-cli TTL` check on a cached key confirmed it had ~25s left. Fixed by passing an explicit `ttl=3600` (1 hour) into the `Cache` constructor.
+5. Minor: the `budget_exceeded` error message formatted dollar amounts to 4 decimal places, which rounded small test budgets (e.g. `$0.00001`) down to `$0.0000` — technically correct but unreadable. Bumped to 6 decimal places.
 
 ---
 
-## Milestone 8: Dashboard (React)
+## Milestone 8: Dashboard (React) ← START HERE
 **Goal**: Web UI for managing and monitoring agents.
 
 **Deliverables:**

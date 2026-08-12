@@ -136,11 +136,27 @@ Your Cursor tasks now:
 - [ ] Try it: `POST /api/v1/eval-suites` with a suite (or use the one `scripts/seed.py` already creates), then `POST /api/v1/eval-suites/{id}/run`, then `GET /api/v1/eval-runs/{id}` to see the scored results
 - [ ] Run the same suite twice against slightly different agent configs, then hit `GET /api/v1/eval-runs/{id}/compare/{other_id}` to see the pass-rate/latency/cost deltas
 
-## Next: Milestone 7 — Token Optimization
+## Milestone 7 — Token Optimization ✅ FULLY DONE (2026-08-11)
 
-Claude Code will handle this next: LiteLLM routing rules (simple→mini, complex→4o),
-Redis-backed response caching, optional LLMLingua prompt compression, cost
-comparison dashboard, budget limit enforcement.
+Smart routing (simple/complex model tiers), Redis-backed LiteLLM response caching,
+optional prompt compression (LLMLingua if installed, dependency-free fallback
+otherwise), per-agent daily budget enforcement (429 once exceeded), and cost/usage
+analytics endpoints (`GET /api/v1/analytics/costs`, `/usage`) plus 4 new Grafana
+panels for cache hit rate, routing tier split, and compression savings. Also fixed
+a gap from Milestone 5: the custom `agentforge_*` Prometheus metrics existed but
+were never actually incremented — they're live now. 99/99 tests passing, ruff clean.
+
+Your Cursor tasks now:
+- [ ] **Commit and push Milestone 7 changes — no AI co-author trailer**
+- [ ] `docker compose up -d --build` to rebuild all services (agent-runtime now depends on the `redis` package)
+- [ ] Try smart routing + caching: set an agent's `config.optimization.enable_smart_routing=true` with `simple_model`/`complex_model`, run it a few times with the same short input, and watch the Grafana "LLM Cache Hit Rate" panel move
+- [ ] Try a budget limit: set `config.optimization.daily_budget_usd` very low on a test agent, run it once, then try again — the second call should 429 with `budget_exceeded`
+- [ ] Check `GET /api/v1/analytics/usage` and `/costs` in Swagger to see aggregated spend
+
+## Next: Milestone 8 — Dashboard (React)
+
+Claude Code will handle this next: React + TypeScript + Tailwind dashboard —
+agent catalog, agent detail, trace viewer, eval results, cost analytics, settings.
 
 ---
 

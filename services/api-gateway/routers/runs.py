@@ -12,7 +12,7 @@ import crud_runs
 import httpx
 from agentforge_common.enums import RunStatus
 from agentforge_common.envelope import DataResponse
-from agentforge_common.exceptions import AgentForgeError
+from agentforge_common.exceptions import AgentForgeError, BudgetExceededError
 from agentforge_common.models import Run, RunCreate
 from agentforge_common.orm import ApiKeyORM
 from dependencies import get_db, require_api_key
@@ -44,6 +44,15 @@ async def run_agent(
     if not llm_api_key:
         raise RuntimeError_("No LLM API key configured — set OPENAI_API_KEY or register a BYOK key")
 
+    daily_budget = agent.config.optimization.daily_budget_usd
+    if daily_budget is not None:
+        spent_today = await crud_runs.get_agent_spend_today(session, agent.id)
+        if spent_today >= daily_budget:
+            raise BudgetExceededError(
+                f"Daily budget of ${daily_budget:.6f} exceeded "
+                f"(spent ${spent_today:.6f} today)"
+            )
+
     run_orm = await crud_runs.create_run(
         session, agent_id=agent.id, agent_version=1, user_input=payload.input,
     )
@@ -62,6 +71,7 @@ async def run_agent(
         "max_iterations": 10,
         "safety_rules": agent.safety_policy.rules,
         "on_violation": agent.safety_policy.on_violation.value,
+        "optimization": agent.config.optimization.model_dump(),
     }
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(agent.config.timeout + 10)) as client:
