@@ -7,7 +7,7 @@ from typing import Any
 from agentforge_common.enums import EvalRunStatus
 from agentforge_common.exceptions import NotFoundError
 from agentforge_common.orm import EvalResultORM, EvalRunORM
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -78,5 +78,17 @@ async def get_eval_run_orm(session: AsyncSession, eval_run_id: uuid.UUID) -> Eva
 async def get_eval_results(session: AsyncSession, eval_run_id: uuid.UUID) -> list[EvalResultORM]:
     result = await session.execute(
         select(EvalResultORM).where(EvalResultORM.eval_run_id == eval_run_id)
+    )
+    return list(result.scalars().all())
+
+
+async def list_eval_runs_for_suite(
+    session: AsyncSession, suite_id: uuid.UUID, limit: int = 20
+) -> list[EvalRunORM]:
+    result = await session.execute(
+        select(EvalRunORM)
+        .where(EvalRunORM.suite_id == suite_id)
+        .order_by(desc(EvalRunORM.started_at).nulls_last())
+        .limit(limit)
     )
     return list(result.scalars().all())

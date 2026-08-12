@@ -153,10 +153,27 @@ Your Cursor tasks now:
 - [ ] Try a budget limit: set `config.optimization.daily_budget_usd` very low on a test agent, run it once, then try again — the second call should 429 with `budget_exceeded`
 - [ ] Check `GET /api/v1/analytics/usage` and `/costs` in Swagger to see aggregated spend
 
-## Next: Milestone 8 — Dashboard (React)
+## Milestone 8 — Dashboard (React) ✅ FULLY DONE (2026-08-12)
 
-Claude Code will handle this next: React + TypeScript + Tailwind dashboard —
-agent catalog, agent detail, trace viewer, eval results, cost analytics, settings.
+Full React + TypeScript + Tailwind dashboard (Vite, Recharts) covering all 6
+required pages: agent catalog, agent detail (config/runs/cost/tools), trace
+viewer, eval results (+ suite detail), cost analytics (charts), and settings
+(API keys, session, safety-policy note). Backend gained an API key management
+endpoint and CORS middleware to support it. Dockerized and wired into
+docker-compose on port 3001. Browser-verified end-to-end against the live
+stack — login, all 6 pages, real seeded data, a real trace with tool calls.
+Backend still 107/107 tests passing, ruff clean.
+
+Your Cursor tasks now:
+- [ ] **Commit and push Milestone 8 changes — no AI co-author trailer**
+- [ ] `docker compose up -d --build dashboard` to pick up any dashboard changes (use `--no-cache` if you hit a stale-layer issue like the one Claude Code caught — see MILESTONES.md)
+- [ ] Open `http://localhost:3001`, log in with a dev key from `uv run python scripts/seed.py`, and click through all 6 pages yourself
+- [ ] Cosmetic polish: styling tweaks, empty-state copy, loading-state polish — all fair game for Cursor
+
+## Next: Milestone 9 — Infrastructure as Code
+
+Terraform modules, Helm charts, GitHub Actions CI/CD — production-ready configs,
+not required to actually deploy (per ADR-003, $0 AWS budget).
 
 ---
 

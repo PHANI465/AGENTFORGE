@@ -175,6 +175,21 @@ async def run_eval_suite(
     return DataResponse(data=_run_orm_to_out(eval_run_orm, results))
 
 
+@router.get("/eval-suites/{suite_id}/runs", response_model=ListResponse[EvalRunOut])
+async def list_eval_runs(
+    suite_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    session: AsyncSession = Depends(get_db),
+    _auth: ApiKeyORM = Depends(require_api_key),
+) -> ListResponse[EvalRunOut]:
+    """Most recent eval runs for a suite, newest first (results omitted for brevity)."""
+    runs = await crud_eval_runs.list_eval_runs_for_suite(session, suite_id, limit)
+    return ListResponse(
+        data=[_run_orm_to_out(r, []) for r in runs],
+        meta=ListMeta(next_cursor=None, limit=limit),
+    )
+
+
 @router.get("/eval-runs/{eval_run_id}", response_model=DataResponse[EvalRunOut])
 async def get_eval_run(
     eval_run_id: uuid.UUID,

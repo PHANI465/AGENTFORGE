@@ -196,19 +196,27 @@
 
 ---
 
-## Milestone 8: Dashboard (React) ← START HERE
+## Milestone 8: Dashboard (React) ✅ DONE (2026-08-12)
 **Goal**: Web UI for managing and monitoring agents.
 
 **Deliverables:**
-- [ ] React + TypeScript + Tailwind project setup
-- [ ] Agent catalog page (list, create, edit)
-- [ ] Agent detail page (config, recent runs, cost)
-- [ ] Trace viewer (visual timeline of agent steps)
-- [ ] Eval results page (scores, version comparison)
-- [ ] Cost analytics page (charts, per-agent breakdown)
-- [ ] Settings page (API keys, safety policies)
+- [x] React + TypeScript + Tailwind project setup — `dashboard/`, Vite + React 19 + Tailwind 4, `Dockerfile` + Compose service on port 3001
+- [x] Agent catalog page (list, create, edit) — `dashboard/src/pages/AgentCatalog.tsx`
+- [x] Agent detail page (config, recent runs, cost) — `dashboard/src/pages/AgentDetail.tsx`
+- [x] Trace viewer (visual timeline of agent steps) — `dashboard/src/pages/TraceViewer.tsx`
+- [x] Eval results page (scores, version comparison) — `dashboard/src/pages/EvalResults.tsx` + suite detail view
+- [x] Cost analytics page (charts, per-agent breakdown) — `dashboard/src/pages/CostAnalytics.tsx` (Recharts)
+- [x] Settings page (API keys, safety policies) — `dashboard/src/pages/Settings.tsx`
 
-**Done when**: Full platform usable through the browser. No terminal required for basic operations.
+**Done when**: Full platform usable through the browser. No terminal required for basic operations. ✅ **Fully verified — browser-tested all 6 pages end-to-end against the live docker-compose stack: logged in with a dev X-API-Key, viewed the seeded agent roster, opened an agent's detail page (config, cost, tools, recent runs), drilled into its trace (3 steps: LLM call → tool call → LLM call, 106 tokens, 1.57s latency), viewed eval suites, viewed cost analytics (daily spend + per-agent breakdown charts with real data), and viewed settings (API key list, current session, per-agent safety policy note). Backend still 107/107 tests passing, ruff clean.**
+
+**Architecture notes:**
+- Backend additions to support the dashboard: `services/api-gateway/routers/api_keys.py` (list/generate API keys), CORS middleware in `main.py` (dashboard origin), and list-endpoint support for runs/eval-runs used by the detail pages.
+- Dashboard auth is a simple client-side gate: the user pastes an `X-API-Key` (from `scripts/seed.py`'s printed dev key), stored in memory/localStorage, attached to every API call. No separate dashboard-side session system — it's a thin client over the existing Gateway auth.
+- Dashboard talks to the API Gateway only (`VITE_API_BASE_URL`, defaults to `http://localhost:8000`) — never touches agent-runtime/eval-service/trace-collector directly, mirroring the existing service boundary.
+
+**Bugs caught and fixed during verification:**
+1. The `dashboard` image had a stale cached Docker layer where `package.json` was baked in as empty, causing `npm error EJSONPARSE` on every container start even though the file on disk was valid — `docker compose build` was reusing a corrupted cached layer instead of reading the current file. Fixed with `docker compose build --no-cache dashboard`; confirmed the rebuilt container starts cleanly and Vite serves on `5173` (mapped to host `3001`).
 
 ---
 

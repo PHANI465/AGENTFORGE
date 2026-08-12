@@ -207,3 +207,34 @@ async def test_run_runtime_error_marks_failed(client, api_key):
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_list_agent_runs_returns_newest_first(client, api_key):
+    agent = await _create_agent(client, api_key)
+
+    with _mock_httpx_post():
+        for text in ("first", "second", "third"):
+            resp = await client.post(
+                f"{BASE}/{agent['id']}/run",
+                json={"input": text},
+                headers={"X-API-Key": api_key},
+            )
+            assert resp.status_code == 200
+
+    list_resp = await client.get(
+        f"{BASE}/{agent['id']}/runs", headers={"X-API-Key": api_key},
+    )
+    assert list_resp.status_code == 200
+    runs = list_resp.json()["data"]
+    assert len(runs) == 3
+    assert runs[0]["input"] == "third"
+    assert runs[-1]["input"] == "first"
+
+
+@pytest.mark.asyncio
+async def test_list_agent_runs_empty_for_new_agent(client, api_key):
+    agent = await _create_agent(client, api_key)
+    resp = await client.get(f"{BASE}/{agent['id']}/runs", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    assert resp.json()["data"] == []

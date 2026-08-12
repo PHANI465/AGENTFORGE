@@ -195,3 +195,30 @@ async def test_compare_eval_runs(client, api_key):
     assert data["run_b"]["id"] == run_b_id
     assert data["pass_rate_delta"] == -0.5
     assert data["avg_latency_ms_delta"] > 0
+
+
+@pytest.mark.asyncio
+async def test_list_eval_runs_for_suite(client, api_key):
+    agent = await _create_agent(client, api_key)
+    suite = await _create_suite(client, api_key, agent["id"])
+
+    with _mock_eval_service_post(_sample_eval_results()):
+        await client.post(f"{SUITES_BASE}/{suite['id']}/run", headers={"X-API-Key": api_key})
+        await client.post(f"{SUITES_BASE}/{suite['id']}/run", headers={"X-API-Key": api_key})
+
+    resp = await client.get(f"{SUITES_BASE}/{suite['id']}/runs", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    runs = resp.json()["data"]
+    assert len(runs) == 2
+    assert all(r["suite_id"] == suite["id"] for r in runs)
+    assert all(r["results"] == [] for r in runs)
+
+
+@pytest.mark.asyncio
+async def test_list_eval_runs_empty_for_new_suite(client, api_key):
+    agent = await _create_agent(client, api_key)
+    suite = await _create_suite(client, api_key, agent["id"])
+
+    resp = await client.get(f"{SUITES_BASE}/{suite['id']}/runs", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    assert resp.json()["data"] == []

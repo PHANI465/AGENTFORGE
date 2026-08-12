@@ -7,12 +7,34 @@ from typing import Any
 from agentforge_common.enums import RunStatus, RunStepType
 from agentforge_common.models import Run
 from agentforge_common.orm import CostRecordORM, RunORM, RunStepORM
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _step_type(raw: str) -> RunStepType:
     return RunStepType(raw)
+
+
+async def list_runs_for_agent(
+    session: AsyncSession, agent_id: uuid.UUID, limit: int = 20
+) -> list[Run]:
+    """Most recent runs for an agent, newest first. Runs that never started
+    (e.g. crashed before completion) sort last since started_at is null."""
+    result = await session.execute(
+        select(RunORM)
+        .where(RunORM.agent_id == agent_id)
+        .order_by(desc(RunORM.started_at).nulls_last())
+        .limit(limit)
+    )
+    rows = result.scalars().all()
+    return [
+        Run(
+            id=r.id, agent_id=r.agent_id, agent_version=r.agent_version,
+            input=r.input, output=r.output, status=r.status, trace_id=r.trace_id,
+            started_at=r.started_at, completed_at=r.completed_at,
+        )
+        for r in rows
+    ]
 
 
 async def get_agent_spend_today(session: AsyncSession, agent_id: uuid.UUID) -> float:

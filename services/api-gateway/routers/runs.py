@@ -11,12 +11,12 @@ import crud_agents
 import crud_runs
 import httpx
 from agentforge_common.enums import RunStatus
-from agentforge_common.envelope import DataResponse
+from agentforge_common.envelope import DataResponse, ListMeta, ListResponse
 from agentforge_common.exceptions import AgentForgeError, BudgetExceededError
 from agentforge_common.models import Run, RunCreate
 from agentforge_common.orm import ApiKeyORM
 from dependencies import get_db, require_api_key
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/v1/agents", tags=["runs"])
@@ -107,3 +107,15 @@ async def run_agent(
     )
 
     return DataResponse(data=run)
+
+
+@router.get("/{agent_id}/runs", response_model=ListResponse[Run])
+async def list_agent_runs(
+    agent_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    session: AsyncSession = Depends(get_db),
+    _auth: ApiKeyORM = Depends(require_api_key),
+) -> ListResponse[Run]:
+    """Most recent runs for an agent, newest first."""
+    runs = await crud_runs.list_runs_for_agent(session, agent_id, limit)
+    return ListResponse(data=runs, meta=ListMeta(next_cursor=None, limit=limit))

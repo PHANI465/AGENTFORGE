@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces", "Iowan Old Style", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --color-deck-950: #08090c;
+  --color-deck-900: #0d0f14;
+  --color-deck-850: #11141b;
+  --color-deck-800: #161a22;
+  --color-deck-700: #20252f;
+  --color-deck-600: #2c323f;
+  --color-deck-500: #3d4453;
+  --color-deck-300: #6b7280;
+  --color-deck-100: #c7cbd4;
+  --color-deck-50: #ece9e2;
+
+  --color-signal: #ff8a3d;
+  --color-signal-dim: #b8602a;
+  --color-cyan: #5eead4;
+  --color-lime: #b7e550;
+  --color-danger: #f2495c;
+
+  --shadow-hud: 0 1px 0 0 rgba(255, 255, 255, 0.03) inset, 0 20px 40px -20px rgba(0, 0, 0, 0.6);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--color-deck-950);
+  color: var(--color-deck-50);
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  position: relative;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255, 138, 61, 0.08), transparent),
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: auto, 48px 48px, 48px 48px;
+  background-position: 0 0, -1px -1px, -1px -1px;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-deck-300);
+}
+
+/* HUD corner-bracket card: four L-shaped corner marks via layered gradients */
+.hud-card {
+  position: relative;
+  background: linear-gradient(180deg, var(--color-deck-850), var(--color-deck-900));
+  border: 1px solid var(--color-deck-700);
+  box-shadow: var(--shadow-hud);
+}
+
+.hud-card::before,
+.hud-card::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+}
+
+.hud-card::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--color-signal);
+  border-left: 2px solid var(--color-signal);
+  opacity: 0.55;
+}
+
+.hud-card::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--color-signal);
+  border-right: 2px solid var(--color-signal);
+  opacity: 0.55;
+}
+
+.hud-scan {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-deck-600) transparent;
+}
+
+.hud-scan::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.hud-scan::-webkit-scrollbar-thumb {
+  background: var(--color-deck-600);
+  border-radius: 4px;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.status-dot-live {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rise-in {
+  animation: rise-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}

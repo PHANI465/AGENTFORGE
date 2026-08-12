@@ -39,6 +39,7 @@ services:
       - AGENT_RUNTIME_URL=http://agent-runtime:8001
       - EVAL_SERVICE_URL=http://eval-service:8002
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DASHBOARD_ORIGINS=${DASHBOARD_ORIGINS:-http://localhost:3001,http://localhost:5173}
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,6 +116,21 @@ services:
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
+
+  # Milestone 8. Port 3001, not 3000 — the original plan (.env.example's
+  # GRAFANA_PORT comment, ARCHITECTURE.md) put the dashboard on 3000, but
+  # Grafana already claimed that port in Milestone 5 and is in active use;
+  # moving it now would break every Grafana link already handed out.
+  dashboard:
+    build:
+      context: ../../dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "3001:5173"
+    environment:
+      - VITE_API_BASE_URL=${DASHBOARD_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      - api-gateway
 
 volumes:
   postgres_data:

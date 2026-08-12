@@ -5,6 +5,8 @@ to the Agent Runtime and Eval Service. Agent CRUD lands in Milestone 2;
 routing to Agent Runtime/Eval Service lands in later milestones.
 """
 
+import os
+
 from agentforge_common.envelope import ErrorDetail, ErrorResponse
 from agentforge_common.exceptions import (
     AgentForgeError,
@@ -15,10 +17,12 @@ from agentforge_common.exceptions import (
 )
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from routers.agents import router as agents_router
 from routers.analytics import router as analytics_router
+from routers.api_keys import router as api_keys_router
 from routers.evals import router as evals_router
 from routers.runs import router as runs_router
 from routers.traces import router as traces_router
@@ -27,11 +31,24 @@ SERVICE_NAME = "api-gateway"
 
 app = FastAPI(title="AgentForge API Gateway", version="0.1.0")
 
+_dashboard_origins = os.getenv(
+    "DASHBOARD_ORIGINS", "http://localhost:3001,http://localhost:5173"
+).split(",")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_dashboard_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(agents_router)
 app.include_router(runs_router)
 app.include_router(traces_router)
 app.include_router(evals_router)
 app.include_router(analytics_router)
+app.include_router(api_keys_router)
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
