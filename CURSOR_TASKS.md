@@ -170,10 +170,32 @@ Your Cursor tasks now:
 - [ ] Open `http://localhost:3001`, log in with a dev key from `uv run python scripts/seed.py`, and click through all 6 pages yourself
 - [ ] Cosmetic polish: styling tweaks, empty-state copy, loading-state polish — all fair game for Cursor
 
-## Next: Milestone 9 — Infrastructure as Code
+## Milestone 9 — Infrastructure as Code ✅ FULLY DONE (2026-08-12)
 
-Terraform modules, Helm charts, GitHub Actions CI/CD — production-ready configs,
-not required to actually deploy (per ADR-003, $0 AWS budget).
+Terraform modules (VPC, EKS, RDS, ElastiCache, ECR, S3) wired into a root config
+with dev/staging/prod tfvars; a data-driven Helm umbrella chart covering all 5
+services (one Deployment/Service/HPA template set, not five copies); GitHub
+Actions CI (ruff, pytest against a real Postgres service container, dashboard
+lint/build, docker build for all 5 images) and CD (GHCR push always-on, ECR +
+`helm upgrade` gated behind a `DEPLOY_TO_AWS` repo variable, OIDC role
+assumption — no static AWS keys anywhere); teardown scripts for both local
+Docker and AWS; a real cost estimate doc. Terraform CLI wasn't available to run
+`terraform plan`, so the config was instead verified by cross-referencing every
+variable and module output reference by hand (all clean). Helm, Docker builds,
+and lint/test commands were all run for real and matched exactly what CI runs.
+
+Your Cursor tasks now:
+- [ ] **Commit and push Milestone 9 changes — no AI co-author trailer**
+- [ ] If you have an AWS account and want to actually try it: `cd infra/terraform`, `terraform init`, `export TF_VAR_db_password=...`, `terraform plan -var-file=envs/dev.tfvars` — review the plan before ever running `apply`
+- [ ] After a real `apply`, try the Helm chart against the real cluster (see `infra/helm/agentforge/values-dev.yaml`'s header comment for the exact `helm install` command)
+- [ ] Set the `DEPLOY_TO_AWS` repo variable to `"true"` (GitHub → Settings → Secrets and variables → Actions → Variables) only once you're ready for `cd.yml` to actually push to ECR and deploy — it's off by default
+- [ ] Always run `scripts/teardown-aws.sh dev` when done experimenting — see `docs/aws-cost-estimate.md` for what leaving it running costs per hour
+
+## Next: Milestone 10 — Polish & Demo
+
+README overhaul with real screenshots, architecture diagrams, API docs, demo
+script, interview talking points, real performance benchmarks, a security
+write-up, and a contributing guide — the portfolio-facing finish line.
 
 ---
 

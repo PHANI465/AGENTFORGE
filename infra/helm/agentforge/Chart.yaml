@@ -1,0 +1,9 @@
+apiVersion: v2
+name: agentforge
+description: AgentForge — agent-native AI platform. Umbrella chart deploying all 5 services (api-gateway, agent-runtime, eval-service, trace-collector, dashboard) against externally provisioned Postgres/Redis (see infra/terraform).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/PHANI465/AGENTFORGE
+maintainers:
+  - name: PHANI465

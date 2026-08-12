@@ -1,0 +1,112 @@
+# Default values — dev-shaped. Override per environment with
+# values-staging.yaml / values-prod.yaml (helm install -f values.yaml -f values-<env>.yaml).
+
+global:
+  # ECR repo prefix from `terraform output ecr_repository_urls`, e.g.
+  # 123456789012.dkr.ecr.us-east-1.amazonaws.com/agentforge
+  imageRegistry: ""
+  imageTag: latest
+  environment: dev
+
+# Filled in from Terraform outputs (postgres_dsn, redis_url) — never commit
+# real values here. Pass with --set-string or a separate untracked
+# values-secrets.yaml (see infra/helm/agentforge/README.md).
+externalConfig:
+  postgresDsn: ""
+  redisUrl: ""
+  openaiApiKey: ""
+
+ingress:
+  enabled: false
+  className: alb
+  host: ""
+  annotations: {}
+
+# One entry per deployable service. `path` under ingress becomes the route
+# prefix; only api-gateway and dashboard are exposed externally by default —
+# agent-runtime/eval-service/trace-collector are internal-only (ClusterIP,
+# no ingress path), matching the same service boundary the docs enforce.
+services:
+  api-gateway:
+    port: 8000
+    replicas: 2
+    image: api-gateway
+    ingressPath: /api
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    env:
+      AGENT_RUNTIME_URL: http://agent-runtime:8001
+      EVAL_SERVICE_URL: http://eval-service:8002
+    secretEnv: [POSTGRES_DSN, REDIS_URL, OPENAI_API_KEY]
+
+  agent-runtime:
+    port: 8001
+    replicas: 2
+    image: agent-runtime
+    ingressPath: ""
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 8
+      targetCPUUtilizationPercentage: 70
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+    env:
+      TRACE_COLLECTOR_URL: http://trace-collector:8003
+    secretEnv: [POSTGRES_DSN, REDIS_URL]
+
+  eval-service:
+    port: 8002
+    replicas: 1
+    image: eval-service
+    ingressPath: ""
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilizationPercentage: 70
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    env:
+      AGENT_RUNTIME_URL: http://agent-runtime:8001
+    secretEnv: [POSTGRES_DSN]
+
+  trace-collector:
+    port: 8003
+    replicas: 1
+    image: trace-collector
+    ingressPath: ""
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilizationPercentage: 70
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    env: {}
+    secretEnv: [POSTGRES_DSN]
+
+  dashboard:
+    port: 80
+    replicas: 2
+    image: dashboard
+    ingressPath: /
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { cpu: 200m, memory: 128Mi }
+    env: {}
+    secretEnv: []

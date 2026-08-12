@@ -1,0 +1,23 @@
+# helm install agentforge . -f values.yaml -f values-dev.yaml \
+#   --set-string global.imageRegistry=<ecr-url> \
+#   --set-string externalConfig.postgresDsn="$(terraform -chdir=../../terraform output -raw postgres_dsn)" \
+#   --set-string externalConfig.redisUrl="$(terraform -chdir=../../terraform output -raw redis_url)" \
+#   --set-string externalConfig.openaiApiKey="$OPENAI_API_KEY"
+
+global:
+  environment: dev
+
+ingress:
+  enabled: false
+
+services:
+  api-gateway:
+    replicas: 1
+    autoscaling:
+      enabled: false
+  agent-runtime:
+    replicas: 1
+    autoscaling:
+      enabled: false
+  dashboard:
+    replicas: 1

@@ -1,0 +1,56 @@
+{{- range $name, $svc := .Values.services }}
+{{- $healthPath := eq $name "dashboard" | ternary "/healthz" "/health" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "agentforge.labels" $ | nindent 4 }}
+    app.kubernetes.io/name: {{ $name }}
+spec:
+  replicas: {{ $svc.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentforge.labels" $ | nindent 8 }}
+        app.kubernetes.io/name: {{ $name }}
+    spec:
+      containers:
+        - name: {{ $name }}
+          image: {{ include "agentforge.image" (dict "global" $.Values.global "svc" $svc) }}
+          ports:
+            - containerPort: {{ $svc.port }}
+          {{- if or $svc.env $svc.secretEnv }}
+          env:
+            {{- range $key, $value := $svc.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- range $svc.secretEnv }}
+            - name: {{ . }}
+              valueFrom:
+                secretKeyRef:
+                  name: agentforge-secrets
+                  key: {{ . }}
+            {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: {{ $healthPath }}
+              port: {{ $svc.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: {{ $healthPath }}
+              port: {{ $svc.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+{{- end }}

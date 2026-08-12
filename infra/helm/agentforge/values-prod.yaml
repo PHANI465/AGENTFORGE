@@ -1,0 +1,39 @@
+global:
+  environment: prod
+
+ingress:
+  enabled: true
+  className: alb
+  host: agentforge.example.com
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/certificate-arn: "" # ACM cert ARN — fill in before applying
+
+services:
+  api-gateway:
+    replicas: 3
+    autoscaling:
+      minReplicas: 3
+      maxReplicas: 10
+  agent-runtime:
+    replicas: 3
+    autoscaling:
+      minReplicas: 3
+      maxReplicas: 12
+  eval-service:
+    replicas: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+  trace-collector:
+    replicas: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+  dashboard:
+    replicas: 2
+    autoscaling:
+      enabled: true

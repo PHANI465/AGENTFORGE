@@ -1,0 +1,18 @@
+global:
+  environment: staging
+
+ingress:
+  enabled: true
+  className: alb
+  host: staging.agentforge.example.com
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+
+services:
+  api-gateway:
+    replicas: 2
+  agent-runtime:
+    replicas: 2
+  dashboard:
+    replicas: 1

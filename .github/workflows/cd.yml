@@ -1,0 +1,155 @@
+name: CD
+
+# Two tiers, both opt-in beyond the free GHCR push:
+#
+# 1. push-ghcr — always runs on a push to main once CI is green. Publishes
+#    every service image to GitHub Container Registry using the built-in
+#    GITHUB_TOKEN. Free, no AWS account needed, works out of the box.
+#
+# 2. push-ecr / deploy-eks — gated behind the `DEPLOY_TO_AWS` repository
+#    variable (Settings → Secrets and variables → Actions → Variables).
+#    Per ADR-003 (CLAUDE.md), this project runs on a $0 AWS budget with no
+#    always-on cloud resources, so these jobs are OFF by default and simply
+#    skip. Flip the variable to "true" (after `terraform apply`-ing
+#    infra/terraform and setting AWS_DEPLOY_ROLE_ARN) to actually deploy.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write # required for AWS OIDC role assumption in push-ecr
+
+jobs:
+  push-ghcr:
+    name: Push ${{ matrix.service }} to GHCR
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+
+    strategy:
+      matrix:
+        include:
+          - service: api-gateway
+            dockerfile: services/api-gateway/Dockerfile
+            context: .
+          - service: agent-runtime
+            dockerfile: services/agent-runtime/Dockerfile
+            context: .
+          - service: eval-service
+            dockerfile: services/eval-service/Dockerfile
+            context: .
+          - service: trace-collector
+            dockerfile: services/trace-collector/Dockerfile
+            context: .
+          - service: dashboard
+            dockerfile: dashboard/Dockerfile.prod
+            context: dashboard
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/agentforge-${{ matrix.service }}:latest
+            ghcr.io/${{ github.repository_owner }}/agentforge-${{ matrix.service }}:sha-${{ github.sha }}
+
+  push-ecr:
+    name: Push ${{ matrix.service }} to ECR
+    runs-on: ubuntu-latest
+    if: vars.DEPLOY_TO_AWS == 'true'
+    needs: [push-ghcr]
+
+    strategy:
+      matrix:
+        include:
+          - service: api-gateway
+            dockerfile: services/api-gateway/Dockerfile
+            context: .
+          - service: agent-runtime
+            dockerfile: services/agent-runtime/Dockerfile
+            context: .
+          - service: eval-service
+            dockerfile: services/eval-service/Dockerfile
+            context: .
+          - service: trace-collector
+            dockerfile: services/trace-collector/Dockerfile
+            context: .
+          - service: dashboard
+            dockerfile: dashboard/Dockerfile.prod
+            context: dashboard
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/agentforge/${{ matrix.service }}:latest
+            ${{ steps.ecr.outputs.registry }}/agentforge/${{ matrix.service }}:sha-${{ github.sha }}
+
+  deploy-eks:
+    name: helm upgrade --install
+    runs-on: ubuntu-latest
+    if: vars.DEPLOY_TO_AWS == 'true'
+    needs: [push-ecr]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - uses: azure/setup-helm@v4
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region ${{ vars.AWS_REGION || 'us-east-1' }} --name agentforge-${{ vars.DEPLOY_ENVIRONMENT || 'staging' }}
+
+      - name: Deploy
+        working-directory: infra/helm/agentforge
+        run: |
+          helm upgrade --install agentforge . \
+            -f values.yaml -f values-${{ vars.DEPLOY_ENVIRONMENT || 'staging' }}.yaml \
+            --set-string global.imageRegistry=${{ steps.ecr.outputs.registry }}/agentforge \
+            --set-string global.imageTag=sha-${{ github.sha }} \
+            --set-string externalConfig.postgresDsn=${{ secrets.POSTGRES_DSN }} \
+            --set-string externalConfig.redisUrl=${{ secrets.REDIS_URL }} \
+            --set-string externalConfig.openaiApiKey=${{ secrets.OPENAI_API_KEY }} \
+            --wait --timeout 5m

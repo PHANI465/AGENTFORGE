@@ -1,0 +1,21 @@
+AgentForge deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Services:
+{{- range $name, $svc := .Values.services }}
+  {{ $name }}  ClusterIP:{{ $svc.port }}
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+
+Ingress host: {{ .Values.ingress.host }}
+  API Gateway: http://{{ .Values.ingress.host }}/api
+  Dashboard:   http://{{ .Values.ingress.host }}/
+{{- else }}
+
+Ingress is disabled — reach services with:
+  kubectl port-forward svc/api-gateway 8000:8000
+  kubectl port-forward svc/dashboard 3001:80
+{{- end }}
+
+Check rollout status:
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}

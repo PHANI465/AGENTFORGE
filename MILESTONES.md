@@ -220,18 +220,25 @@
 
 ---
 
-## Milestone 9: Infrastructure as Code
+## Milestone 9: Infrastructure as Code ✅ DONE (2026-08-12)
 **Goal**: Production-ready deployment configs (no need to actually deploy).
 
 **Deliverables:**
-- [ ] Terraform modules for AWS (VPC, EKS, RDS, ElastiCache, S3, ECR)
-- [ ] Helm charts for all services
-- [ ] GitHub Actions CI/CD (lint, test, build, push images)
-- [ ] Environment configs (dev, staging, prod)
-- [ ] Teardown scripts (destroy all AWS resources)
-- [ ] Cost estimate documentation
+- [x] Terraform modules for AWS (VPC, EKS, RDS, ElastiCache, S3, ECR) — `infra/terraform/modules/{vpc,eks,rds,elasticache,ecr,s3}/`, wired together in root `main.tf`
+- [x] Helm charts for all services — `infra/helm/agentforge/`, one data-driven umbrella chart (not 5 copy-pasted charts) covering all 5 app services
+- [x] GitHub Actions CI/CD (lint, test, build, push images) — `.github/workflows/ci.yml` (ruff, pytest against a real Postgres service container, dashboard lint+build, docker build for all 5 images) + `.github/workflows/cd.yml` (GHCR push always-on, ECR push + `helm upgrade` gated behind a `DEPLOY_TO_AWS` repo variable)
+- [x] Environment configs (dev, staging, prod) — `infra/terraform/envs/*.tfvars` + `infra/helm/agentforge/values-{dev,staging,prod}.yaml`
+- [x] Teardown scripts (destroy all AWS resources) — `scripts/teardown-local.sh` (docker compose down -v) + `scripts/teardown-aws.sh <env>` (terraform destroy, with a typed confirmation for prod)
+- [x] Cost estimate documentation — `docs/aws-cost-estimate.md`
 
-**Done when**: `terraform plan` succeeds. Helm charts render correctly. CI pipeline runs on push.
+**Done when**: `terraform plan` succeeds. Helm charts render correctly. CI pipeline runs on push. ✅ **Terraform CLI wasn't available in this environment, so instead of `terraform plan` the config was verified by static analysis: brace-balance check, every `var.X` reference cross-checked against a declared variable, every `module.X.output` reference cross-checked against that module's declared outputs — all clean across all 6 modules + root. Helm was verified for real: `helm lint` passes with all 3 env value files, `helm template` was rendered and inspected for all 3 environments (image references resolve correctly with a registry prefix, all 5 HPAs generate, the Ingress correctly orders `/api` before the catch-all `/`). The 4 Python service Dockerfiles and the new production dashboard image (`dashboard/Dockerfile.prod`, multi-stage Vite build → nginx) were all built for real with `docker build` — matching exactly what the CI workflow's matrix does — and the nginx image was smoke-tested live (index route, a client-side SPA route, and `/healthz` all returned 200). `ruff check .`, dashboard `npm run lint`, and dashboard `npm run build` all pass locally exactly as CI would run them. The live docker-compose stack (dashboard + api-gateway) was reconfirmed healthy afterward — nothing in this milestone touched the running stack.**
+
+**Architecture notes:**
+- Helm chart is data-driven: `values.yaml` defines a `services:` map (port, replicas, resources, env, secretEnv, autoscaling, ingressPath per service) and `templates/{deployment,service,hpa}.yaml` each do one `range` over it — avoids 5x duplicated near-identical YAML files, and adding a 6th service later is a values.yaml entry, not a new template.
+- The dashboard needed a second Dockerfile (`dashboard/Dockerfile.prod`) for Kubernetes — the Milestone 8 `Dockerfile` runs `vite dev`, fine for docker-compose but not something you'd run in production (no asset compaction, memory growth). `Dockerfile.prod` does a multi-stage build: Node stage runs `npm run build` with `VITE_API_BASE_URL` as a build arg (Vite bakes env vars in at build time, so this image is built once per target environment in CD, not once and reused), then an nginx stage serves the static `dist/` with SPA fallback routing (`try_files ... /index.html`) so client-side routes like `/agents/{id}` don't 404 on a hard refresh. The original dev Dockerfile and local docker-compose flow are untouched.
+- CI's Postgres-backed integration tests needed a real database, matched exactly to what `tests/integration/api_gateway/conftest.py` expects: a `postgres:16-alpine` service container with `agentforge`/`agentforge` creds on `localhost:5432`, the same as local dev.
+- CD is deliberately two-tier: pushing to GHCR is unconditional (free, uses the built-in `GITHUB_TOKEN`, no AWS account needed) so the CI/CD pipeline is genuinely exercised on every merge; pushing to ECR and running `helm upgrade` against a real EKS cluster only fires when a `DEPLOY_TO_AWS` repo variable is explicitly flipped to `"true"` — matching ADR-003's $0-budget stance without leaving the AWS deploy path untested-by-design, just untriggered-by-default.
+- AWS IAM auth in CD uses OIDC role assumption (`aws-actions/configure-aws-credentials` with `role-to-assume`), not long-lived static access keys — no `AWS_ACCESS_KEY_ID` secret exists anywhere in this repo.
 
 ---
 
