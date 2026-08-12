@@ -242,17 +242,23 @@
 
 ---
 
-## Milestone 10: Polish & Demo
+## Milestone 10: Polish & Demo ✅ DONE (2026-08-12)
 **Goal**: Portfolio-ready project.
 
 **Deliverables:**
-- [ ] Comprehensive README with screenshots/GIFs
-- [ ] Architecture diagrams (Mermaid or draw.io)
-- [ ] API documentation (auto-generated + examples)
-- [ ] Demo video/script
-- [ ] Interview talking points document
-- [ ] Performance benchmarks
-- [ ] Security considerations document
-- [ ] Contributing guide
+- [x] Comprehensive README with screenshots/GIFs — `README.md` rewritten: fixed the stale port table (dashboard is 3001, Grafana is 3000 — the reverse of the original plan), added the live architecture diagram, a "what it actually does (verified, not aspirational)" section, and links to every new doc below. **No screenshots/GIFs** — this session's browser tool couldn't render a compositable frame to capture from (confirmed via repeated attempts), and fabricating placeholder images of the UI was ruled out rather than shipped; real example JSON/curl output is used throughout instead of screenshots
+- [x] Architecture diagrams (Mermaid or draw.io) — `docs/diagrams/`: system architecture, request-flow sequence diagram, and a data-model ER diagram, all cross-checked against the real code (`orm.py`, service `main.py`s) rather than the original design doc
+- [x] API documentation (auto-generated + examples) — `docs/api/README.md`, built from the live `openapi.json` of all 4 services, with real example requests/responses captured from the running stack
+- [x] Demo video/script — `docs/demo-script.md` (no video — a written walkthrough script; recording/screen-capture tooling wasn't available in this environment either)
+- [x] Interview talking points document — `docs/interview-talking-points.md`
+- [x] Performance benchmarks — `docs/benchmarks.md` + `scripts/benchmark.py`, run for real against the live stack (see verification below)
+- [x] Security considerations document — `docs/security.md`, including an honest gap list (BYOK keys are currently stored in plaintext despite the `encrypted_key` column name — flagged rather than hidden)
+- [x] Contributing guide — `CONTRIBUTING.md`
 
-**Done when**: A hiring manager can clone the repo, run it in 5 minutes, and understand what it does.
+**Done when**: A hiring manager can clone the repo, run it in 5 minutes, and understand what it does. ✅ **Every number in every new doc came from actually running the stack, not estimation: `scripts/benchmark.py` was run live and produced real figures (gateway overhead ~3-10ms, cold LLM call latency 447ms-4.5s depending on OpenAI's own variance, cache-hit speedup measured at 13.3x with a $0→cost drop on hits, a real 2-test-case eval suite run in 2.4s). All markdown cross-links across every new/changed doc were verified to resolve to real files (none broken). The full backend test suite was re-run after all doc/infra changes: still 107/107 passing. The live docker-compose stack (dashboard + api-gateway) was reconfirmed healthy throughout — nothing in this milestone touched application code.**
+
+**Bugs/gaps caught during verification:**
+1. The benchmark script's first run failed outright (`400: No LLM API key configured`) — the `api-gateway`/`agent-runtime` containers had been recreated earlier in the session with a bare `docker compose up -d` (no `--env-file .env`), so `OPENAI_API_KEY` never reached them despite being set in `.env`. This is the exact same class of bug caught live during Milestone 3 verification (env-file lookup is cwd-relative, not compose-file-relative) — recurring specifically because it's an easy command to type without the flag. Fixed by recreating both containers with `--env-file .env` explicitly; now called out directly in `docs/demo-script.md`'s "if something breaks live" section so it doesn't surprise a future demo.
+2. Writing `docs/security.md` surfaced that `ARCHITECTURE.md`'s original security section (BYOK keys "encrypted at rest via Fernet") was never actually implemented — `api_keys.encrypted_key` stores plaintext. This was true since Milestone 3 but never written down anywhere; now documented as the top item in `docs/security.md`'s gap list, and `ARCHITECTURE.md` itself was updated to point at the accurate doc instead of repeating the stale claim.
+
+---

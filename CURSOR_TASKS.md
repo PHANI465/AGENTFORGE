@@ -191,11 +191,31 @@ Your Cursor tasks now:
 - [ ] Set the `DEPLOY_TO_AWS` repo variable to `"true"` (GitHub → Settings → Secrets and variables → Actions → Variables) only once you're ready for `cd.yml` to actually push to ECR and deploy — it's off by default
 - [ ] Always run `scripts/teardown-aws.sh dev` when done experimenting — see `docs/aws-cost-estimate.md` for what leaving it running costs per hour
 
-## Next: Milestone 10 — Polish & Demo
+## Milestone 10 — Polish & Demo ✅ FULLY DONE (2026-08-12)
 
-README overhaul with real screenshots, architecture diagrams, API docs, demo
-script, interview talking points, real performance benchmarks, a security
-write-up, and a contributing guide — the portfolio-facing finish line.
+README rewritten (fixed the stale port table, added the live architecture
+diagram, links to every new doc); `docs/diagrams/` (system architecture,
+request-flow sequence, ER diagram, all cross-checked against real code, not
+the original design doc); `docs/api/README.md` (built from the live
+`openapi.json` with real captured example payloads); `docs/benchmarks.md` +
+`scripts/benchmark.py` (real numbers from the live stack — 13.3x cache
+speedup, real cold-call latency distribution); `docs/security.md` (honest —
+flags that BYOK keys are stored in plaintext despite the column name, not
+hidden); `docs/demo-script.md`; `docs/interview-talking-points.md`;
+`CONTRIBUTING.md`. **No screenshots or demo video** — this environment's
+browser tool couldn't produce a compositable frame to screenshot from, and a
+recording tool wasn't available either; real captured JSON/curl output
+stands in for screenshots throughout. All markdown cross-links verified to
+resolve; backend suite reconfirmed 107/107 after all changes.
+
+This closes out all 10 planned milestones.
+
+Your Cursor tasks now:
+- [ ] **Commit and push Milestone 10 changes — no AI co-author trailer**
+- [ ] If you want real screenshots/GIFs in the README: run the app locally, capture the 6 dashboard pages, drop them in a `docs/screenshots/` folder, and link them into `README.md`'s "What it actually does" section
+- [ ] Optional: record an actual demo video/GIF following `docs/demo-script.md`'s script
+- [ ] Decide on a license (`README.md`'s License section is still "TBD") and add a `LICENSE` file
+- [ ] Read through `docs/security.md`'s gap list — the BYOK plaintext-storage item is the one worth actually fixing if this project keeps going
 
 ---
 

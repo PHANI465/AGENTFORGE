@@ -240,6 +240,11 @@ cost_records
 
 ## Security Considerations
 
+This section describes the original design intent. **See
+[`docs/security.md`](docs/security.md) for what's actually implemented**,
+including an honest list of gaps (e.g. BYOK keys are not currently encrypted
+at rest, despite the intent below) — that document supersedes this one.
+
 - API keys stored encrypted at rest (AES-256 via Fernet)
 - User LLM keys never logged, never included in traces
 - Safety policy checks run in-process (not bypassable)
@@ -251,17 +256,7 @@ cost_records
 
 ## Local Development Setup
 
-```bash
-# Clone and start everything
-git clone https://github.com/YOUR_USERNAME/agentforge.git
-cd agentforge
-cp .env.example .env  # Add your OpenAI API key
-docker-compose up -d
-
-# Services available at:
-# API Gateway:    http://localhost:8000
-# Dashboard:      http://localhost:3000
-# LiteLLM Proxy:  http://localhost:4000
-# Grafana:        http://localhost:3001
-# Prometheus:     http://localhost:9090
-```
+See [`README.md`](README.md) for the current, accurate setup instructions and
+port table — the dashboard ended up on `3001` and Grafana on `3000` (the
+reverse of this doc's original plan), since Grafana claimed `3000` in
+Milestone 5 before the dashboard existed in Milestone 8.
