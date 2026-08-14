@@ -10,10 +10,12 @@ T = TypeVar("T")
 
 
 class ListMeta(BaseModel):
-    """Cursor-pagination metadata for list endpoints."""
+    """Pagination metadata for list endpoints."""
 
-    next_cursor: str | None = None
+    total: int | None = None
     limit: int
+    offset: int = 0
+    next_cursor: str | None = None
 
 
 class DataResponse(BaseModel, Generic[T]):

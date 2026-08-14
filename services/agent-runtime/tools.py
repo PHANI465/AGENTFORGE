@@ -2,10 +2,14 @@
 
 import ast
 import operator
+import os
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 from agentforge_common.models import ToolSpec
+
+API_GATEWAY_URL = os.getenv("API_GATEWAY_URL", "http://api-gateway:8000")
 
 _SAFE_OPS: dict[type, Any] = {
     ast.Add: operator.add,
@@ -52,6 +56,24 @@ async def tool_calculate(expression: str) -> str:
         return f"Error: {e}"
 
 
+async def tool_call_agent(agent_id: str, input: str, api_key: str = "") -> str:
+    """Delegates a sub-task to another agent and returns its output."""
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120)) as client:
+            resp = await client.post(
+                f"{API_GATEWAY_URL}/api/v1/agents/{agent_id}/run",
+                json={"input": input},
+                headers={"X-API-Key": api_key} if api_key else {},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("data", {}).get("output", "No output from sub-agent")
+    except httpx.HTTPStatusError as e:
+        return f"Sub-agent call failed (HTTP {e.response.status_code}): {e.response.text[:200]}"
+    except httpx.RequestError as e:
+        return f"Sub-agent call failed: {e}"
+
+
 BUILTIN_SPECS: dict[str, ToolSpec] = {
     "get_current_time": ToolSpec(
         name="get_current_time",
@@ -78,9 +100,30 @@ BUILTIN_SPECS: dict[str, ToolSpec] = {
     ),
 }
 
+BUILTIN_SPECS["call_agent"] = ToolSpec(
+    name="call_agent",
+    description="Delegates a sub-task to another agent by ID. Use when the current task "
+    "requires expertise from a specialist agent.",
+    parameters_schema={
+        "type": "object",
+        "properties": {
+            "agent_id": {
+                "type": "string",
+                "description": "UUID of the agent to call",
+            },
+            "input": {
+                "type": "string",
+                "description": "The input/question to send to the sub-agent",
+            },
+        },
+        "required": ["agent_id", "input"],
+    },
+)
+
 BUILTIN_CALLABLES: dict[str, Any] = {
     "get_current_time": tool_get_current_time,
     "calculate": tool_calculate,
+    "call_agent": tool_call_agent,
 }
 
 

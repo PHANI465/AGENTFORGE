@@ -12,10 +12,13 @@ from agentforge_common.models import (
     CostRecord,
     EvalResult,
     EvalSuite,
+    EvalSuiteCreate,
     EvalTestCase,
     Run,
+    RunCreate,
     RunStep,
     SafetyPolicy,
+    TokenOptimizationConfig,
     ToolSpec,
 )
 from pydantic import ValidationError
@@ -143,3 +146,68 @@ def test_cost_record_requires_positive_token_fields_are_ints():
     )
     assert record.run_id is None
     assert record.tokens_in == 100
+
+
+# ── Input validation hardening ──────────────────────────────────────
+
+
+class TestAgentConfigBounds:
+    def test_max_tokens_too_high(self):
+        with pytest.raises(ValidationError):
+            AgentConfig(max_tokens=200_000)
+
+    def test_max_tokens_zero(self):
+        with pytest.raises(ValidationError):
+            AgentConfig(max_tokens=0)
+
+    def test_temperature_negative(self):
+        with pytest.raises(ValidationError):
+            AgentConfig(temperature=-0.1)
+
+    def test_temperature_above_2(self):
+        with pytest.raises(ValidationError):
+            AgentConfig(temperature=2.5)
+
+    def test_timeout_too_high(self):
+        with pytest.raises(ValidationError):
+            AgentConfig(timeout=9999)
+
+    def test_valid_boundary_values(self):
+        cfg = AgentConfig(max_tokens=128_000, temperature=2.0, timeout=600)
+        assert cfg.max_tokens == 128_000
+
+
+class TestAgentNameLength:
+    def test_empty_name_rejected(self):
+        with pytest.raises(ValidationError):
+            AgentCreate(name="", model="gpt-4o", system_prompt="hello")
+
+    def test_name_too_long(self):
+        with pytest.raises(ValidationError):
+            AgentCreate(name="x" * 201, model="gpt-4o", system_prompt="hello")
+
+
+class TestRunCreateValidation:
+    def test_empty_input_rejected(self):
+        with pytest.raises(ValidationError):
+            RunCreate(input="")
+
+    def test_valid_input(self):
+        rc = RunCreate(input="hello")
+        assert rc.input == "hello"
+
+
+class TestTokenOptimizationBounds:
+    def test_negative_budget_rejected(self):
+        with pytest.raises(ValidationError):
+            TokenOptimizationConfig(daily_budget_usd=-1.0)
+
+    def test_compression_threshold_too_low(self):
+        with pytest.raises(ValidationError):
+            TokenOptimizationConfig(compression_threshold_chars=50)
+
+
+class TestEvalSuiteCreateValidation:
+    def test_empty_suite_name_rejected(self):
+        with pytest.raises(ValidationError):
+            EvalSuiteCreate(name="", agent_id=uuid4())

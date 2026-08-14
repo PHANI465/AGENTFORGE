@@ -111,6 +111,7 @@ Every milestone below was verified against the live stack, not just unit-tested 
 
 | Doc | What's in it |
 |---|---|
+| [`docs/PROJECT_DOSSIER.md`](docs/PROJECT_DOSSIER.md) | **Complete project dossier** - every tool, why, alternatives, difficulties, future extensions, use cases, lessons learned |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Original system design |
 | [`docs/diagrams/`](docs/diagrams/) | Architecture, request-flow, and data-model diagrams (Mermaid) |
 | [`docs/api/README.md`](docs/api/README.md) | API reference with real example requests/responses |

@@ -21,9 +21,11 @@ from agentforge_common.envelope import DataResponse, ListMeta, ListResponse
 from agentforge_common.exceptions import AgentForgeError
 from agentforge_common.models import EvalSuite, EvalSuiteCreate
 from agentforge_common.orm import ApiKeyORM, EvalResultORM, EvalRunORM
+from agentforge_common.security import decrypt_key
 from dependencies import get_db, require_api_key
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel, Field
+from rate_limit import RATE_LIMIT_RUN, limiter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/v1", tags=["eval"])
@@ -90,7 +92,11 @@ def _run_orm_to_out(orm: EvalRunORM, results: list[EvalResultORM]) -> EvalRunOut
 
 
 @router.post(
-    "/eval-suites", response_model=DataResponse[EvalSuite], status_code=status.HTTP_201_CREATED
+    "/eval-suites",
+    response_model=DataResponse[EvalSuite],
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an eval suite",
+    operation_id="createEvalSuite",
 )
 async def create_eval_suite(
     payload: EvalSuiteCreate,
@@ -101,7 +107,12 @@ async def create_eval_suite(
     return DataResponse(data=suite)
 
 
-@router.get("/eval-suites", response_model=ListResponse[EvalSuite])
+@router.get(
+    "/eval-suites",
+    response_model=ListResponse[EvalSuite],
+    summary="List eval suites",
+    operation_id="listEvalSuites",
+)
 async def list_eval_suites(
     limit: int = Query(default=20, ge=1, le=100),
     cursor: str | None = Query(default=None),
@@ -112,7 +123,12 @@ async def list_eval_suites(
     return ListResponse(data=suites, meta=ListMeta(next_cursor=next_cursor, limit=limit))
 
 
-@router.get("/eval-suites/{suite_id}", response_model=DataResponse[EvalSuite])
+@router.get(
+    "/eval-suites/{suite_id}",
+    response_model=DataResponse[EvalSuite],
+    summary="Get an eval suite by ID",
+    operation_id="getEvalSuite",
+)
 async def get_eval_suite(
     suite_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
@@ -122,8 +138,15 @@ async def get_eval_suite(
     return DataResponse(data=suite)
 
 
-@router.post("/eval-suites/{suite_id}/run", response_model=DataResponse[EvalRunOut])
+@router.post(
+    "/eval-suites/{suite_id}/run",
+    response_model=DataResponse[EvalRunOut],
+    summary="Run an eval suite",
+    operation_id="runEvalSuite",
+)
+@limiter.limit(RATE_LIMIT_RUN)
 async def run_eval_suite(
+    request: Request,
     suite_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
     auth: ApiKeyORM = Depends(require_api_key),
@@ -132,7 +155,7 @@ async def run_eval_suite(
     suite_orm = await crud_evals.get_eval_suite_orm(session, suite_id)
     agent = await crud_agents.get_agent(session, suite_orm.agent_id)
 
-    llm_api_key = auth.encrypted_key or os.getenv("OPENAI_API_KEY", "")
+    llm_api_key = decrypt_key(auth.encrypted_key) or os.getenv("OPENAI_API_KEY", "")
     if not llm_api_key:
         raise EvalServiceError(
             "No LLM API key configured — set OPENAI_API_KEY or register a BYOK key"
@@ -175,7 +198,12 @@ async def run_eval_suite(
     return DataResponse(data=_run_orm_to_out(eval_run_orm, results))
 
 
-@router.get("/eval-suites/{suite_id}/runs", response_model=ListResponse[EvalRunOut])
+@router.get(
+    "/eval-suites/{suite_id}/runs",
+    response_model=ListResponse[EvalRunOut],
+    summary="List eval runs for a suite",
+    operation_id="listEvalRuns",
+)
 async def list_eval_runs(
     suite_id: uuid.UUID,
     limit: int = Query(default=20, ge=1, le=100),
@@ -190,7 +218,12 @@ async def list_eval_runs(
     )
 
 
-@router.get("/eval-runs/{eval_run_id}", response_model=DataResponse[EvalRunOut])
+@router.get(
+    "/eval-runs/{eval_run_id}",
+    response_model=DataResponse[EvalRunOut],
+    summary="Get an eval run with results",
+    operation_id="getEvalRun",
+)
 async def get_eval_run(
     eval_run_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
@@ -202,7 +235,10 @@ async def get_eval_run(
 
 
 @router.get(
-    "/eval-runs/{eval_run_id}/compare/{other_run_id}", response_model=DataResponse[EvalCompareOut]
+    "/eval-runs/{eval_run_id}/compare/{other_run_id}",
+    response_model=DataResponse[EvalCompareOut],
+    summary="Compare two eval runs",
+    operation_id="compareEvalRuns",
 )
 async def compare_eval_runs(
     eval_run_id: uuid.UUID,

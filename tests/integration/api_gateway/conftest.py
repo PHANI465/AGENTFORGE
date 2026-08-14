@@ -24,7 +24,7 @@ if str(API_GATEWAY_DIR) not in sys.path:
 from agentforge_common import orm  # noqa: E402,F401  registers tables on Base.metadata
 from agentforge_common.db import Base  # noqa: E402
 from agentforge_common.orm import ApiKeyORM  # noqa: E402
-from agentforge_common.security import generate_api_key, hash_api_key  # noqa: E402
+from agentforge_common.security import encrypt_key, generate_api_key, hash_api_key  # noqa: E402
 
 ADMIN_DSN = "postgresql+asyncpg://agentforge:agentforge@localhost:5432/postgres"
 TEST_DB_NAME = "agentforge_test"
@@ -78,7 +78,7 @@ async def api_key(session) -> str:
             key_hash=hash_api_key(raw_key),
             user_id="test-user",
             provider="openai",
-            encrypted_key="sk-test-dummy-key-for-integration-tests",
+            encrypted_key=encrypt_key("sk-test-dummy-key-for-integration-tests"),
         )
     )
     await session.commit()

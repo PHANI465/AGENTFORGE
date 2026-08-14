@@ -30,18 +30,18 @@ class TokenOptimizationConfig(BaseModel):
 
     enable_caching: bool = True
     enable_smart_routing: bool = False
-    simple_model: str | None = None
-    complex_model: str | None = None
-    complexity_threshold: int = 200
+    simple_model: str | None = Field(default=None, max_length=100)
+    complex_model: str | None = Field(default=None, max_length=100)
+    complexity_threshold: int = Field(default=200, ge=1, le=100_000)
     enable_compression: bool = False
-    compression_threshold_chars: int = 2000
-    daily_budget_usd: float | None = None
+    compression_threshold_chars: int = Field(default=2000, ge=100, le=1_000_000)
+    daily_budget_usd: float | None = Field(default=None, ge=0.0, le=10_000.0)
 
 
 class AgentConfig(BaseModel):
-    max_tokens: int = 1024
-    temperature: float = 0.7
-    timeout: int = 30
+    max_tokens: int = Field(default=1024, ge=1, le=128_000)
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    timeout: int = Field(default=30, ge=1, le=600)
     retry_policy: dict[str, Any] | None = None
     optimization: TokenOptimizationConfig = Field(default_factory=TokenOptimizationConfig)
 
@@ -49,16 +49,16 @@ class AgentConfig(BaseModel):
 class ToolSpec(BaseModel):
     """Wire-format description of a tool (no callable — that lives client-side in the SDK)."""
 
-    name: str
-    description: str
+    name: str = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=1, max_length=1000)
     parameters_schema: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentBase(BaseModel):
-    name: str
-    model: str
-    system_prompt: str
-    tools: list[ToolSpec] = Field(default_factory=list)
+    name: str = Field(min_length=1, max_length=200)
+    model: str = Field(min_length=1, max_length=100)
+    system_prompt: str = Field(min_length=1, max_length=100_000)
+    tools: list[ToolSpec] = Field(default_factory=list, max_length=50)
     safety_policy: SafetyPolicy = Field(default_factory=SafetyPolicy)
     config: AgentConfig = Field(default_factory=AgentConfig)
 
@@ -145,9 +145,9 @@ class EvalSuite(BaseModel):
 
 
 class EvalSuiteCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=200)
     agent_id: UUID
-    test_cases: list[EvalTestCase] = Field(default_factory=list)
+    test_cases: list[EvalTestCase] = Field(default_factory=list, max_length=500)
 
 
 class EvalRun(BaseModel):
@@ -176,7 +176,7 @@ class EvalResult(BaseModel):
 class RunCreate(BaseModel):
     """Input payload for POST /api/v1/agents/{id}/run."""
 
-    input: str
+    input: str = Field(min_length=1, max_length=100_000)
 
 
 class CostRecord(BaseModel):

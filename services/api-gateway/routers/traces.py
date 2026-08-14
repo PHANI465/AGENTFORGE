@@ -49,7 +49,12 @@ class TraceResponse(BaseModel):
     summary: TraceSummary
 
 
-@router.get("/{run_id}/trace", response_model=DataResponse[TraceResponse])
+@router.get(
+    "/{run_id}/trace",
+    response_model=DataResponse[TraceResponse],
+    summary="Get execution trace for a run",
+    operation_id="getRunTrace",
+)
 async def get_run_trace(
     run_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),

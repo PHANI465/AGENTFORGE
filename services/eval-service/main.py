@@ -5,13 +5,30 @@ Runtime, scores results (LLM-as-judge accuracy, tool correctness), and
 returns scored results to the API Gateway for persistence.
 """
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+import structlog
+from agentforge_common.db import engine as db_engine
+from agentforge_common.logging import setup_logging
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 from routers.evals import router as evals_router
 
 SERVICE_NAME = "eval-service"
+setup_logging(SERVICE_NAME)
+log = structlog.get_logger(service=SERVICE_NAME)
 
-app = FastAPI(title="AgentForge Eval Service", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    log.info("starting", service=SERVICE_NAME)
+    yield
+    log.info("shutting_down", service=SERVICE_NAME)
+    await db_engine.dispose()
+
+
+app = FastAPI(title="AgentForge Eval Service", version="0.1.0", lifespan=lifespan)
 app.include_router(evals_router)
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)

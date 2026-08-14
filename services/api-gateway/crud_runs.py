@@ -15,6 +15,15 @@ def _step_type(raw: str) -> RunStepType:
     return RunStepType(raw)
 
 
+async def count_runs_for_agent(
+    session: AsyncSession, agent_id: uuid.UUID
+) -> int:
+    result = await session.execute(
+        select(func.count()).select_from(RunORM).where(RunORM.agent_id == agent_id)
+    )
+    return result.scalar_one()
+
+
 async def list_runs_for_agent(
     session: AsyncSession, agent_id: uuid.UUID, limit: int = 20
 ) -> list[Run]:

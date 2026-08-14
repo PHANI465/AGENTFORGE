@@ -7,8 +7,8 @@ from datetime import datetime
 
 from agentforge_common.exceptions import NotFoundError
 from agentforge_common.models import Agent, AgentCreate, AgentUpdate
-from agentforge_common.orm import AgentORM
-from sqlalchemy import select, tuple_
+from agentforge_common.orm import AgentORM, AgentVersionORM
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -38,6 +38,41 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
     return datetime.fromisoformat(payload["created_at"]), uuid.UUID(payload["id"])
 
 
+def _snapshot(orm: AgentORM) -> dict:
+    return {
+        "name": orm.name,
+        "model": orm.model,
+        "system_prompt": orm.system_prompt,
+        "tools_config": orm.tools_config,
+        "safety_policy": orm.safety_policy,
+        "config": orm.config,
+        "status": orm.status.value if hasattr(orm.status, "value") else str(orm.status),
+    }
+
+
+async def _next_version(session: AsyncSession, agent_id: uuid.UUID) -> int:
+    result = await session.execute(
+        select(func.coalesce(func.max(AgentVersionORM.version), 0)).where(
+            AgentVersionORM.agent_id == agent_id
+        )
+    )
+    return result.scalar_one() + 1
+
+
+async def count_agents(
+    session: AsyncSession,
+    status_filter: str | None = None,
+    search: str | None = None,
+) -> int:
+    stmt = select(func.count()).select_from(AgentORM)
+    if status_filter:
+        stmt = stmt.where(AgentORM.status == status_filter)
+    if search:
+        stmt = stmt.where(AgentORM.name.ilike(f"%{search}%"))
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
 async def create_agent(session: AsyncSession, payload: AgentCreate) -> Agent:
     orm = AgentORM(
         id=uuid.uuid4(),
@@ -51,13 +86,27 @@ async def create_agent(session: AsyncSession, payload: AgentCreate) -> Agent:
     session.add(orm)
     await session.flush()
     await session.refresh(orm)
+
+    session.add(AgentVersionORM(
+        id=uuid.uuid4(), agent_id=orm.id, version=1, snapshot=_snapshot(orm),
+    ))
+    await session.flush()
+
     return _orm_to_model(orm)
 
 
 async def list_agents(
-    session: AsyncSession, limit: int, cursor: str | None
+    session: AsyncSession,
+    limit: int,
+    cursor: str | None,
+    status_filter: str | None = None,
+    search: str | None = None,
 ) -> tuple[list[Agent], str | None]:
     stmt = select(AgentORM).order_by(AgentORM.created_at.asc(), AgentORM.id.asc()).limit(limit + 1)
+    if status_filter:
+        stmt = stmt.where(AgentORM.status == status_filter)
+    if search:
+        stmt = stmt.where(AgentORM.name.ilike(f"%{search}%"))
     if cursor:
         cursor_created_at, cursor_id = _decode_cursor(cursor)
         stmt = stmt.where(
@@ -102,6 +151,85 @@ async def update_agent(session: AsyncSession, agent_id: uuid.UUID, payload: Agen
 
     await session.flush()
     await session.refresh(orm)
+
+    new_version = await _next_version(session, agent_id)
+    session.add(AgentVersionORM(
+        id=uuid.uuid4(), agent_id=agent_id, version=new_version, snapshot=_snapshot(orm),
+    ))
+    await session.flush()
+
+    return _orm_to_model(orm)
+
+
+async def list_versions(
+    session: AsyncSession, agent_id: uuid.UUID
+) -> list[AgentVersionORM]:
+    await get_agent_orm(session, agent_id)
+    result = await session.execute(
+        select(AgentVersionORM)
+        .where(AgentVersionORM.agent_id == agent_id)
+        .order_by(AgentVersionORM.version.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def rollback_agent(
+    session: AsyncSession, agent_id: uuid.UUID, target_version: int
+) -> Agent:
+    await get_agent_orm(session, agent_id)
+    result = await session.execute(
+        select(AgentVersionORM).where(
+            AgentVersionORM.agent_id == agent_id,
+            AgentVersionORM.version == target_version,
+        )
+    )
+    version_orm = result.scalar_one_or_none()
+    if version_orm is None:
+        raise NotFoundError("agent_version", f"{agent_id}@v{target_version}")
+
+    snap = version_orm.snapshot
+    orm = await get_agent_orm(session, agent_id)
+    orm.name = snap["name"]
+    orm.model = snap["model"]
+    orm.system_prompt = snap["system_prompt"]
+    orm.tools_config = snap["tools_config"]
+    orm.safety_policy = snap["safety_policy"]
+    orm.config = snap["config"]
+
+    await session.flush()
+    await session.refresh(orm)
+
+    new_version = await _next_version(session, agent_id)
+    session.add(AgentVersionORM(
+        id=uuid.uuid4(), agent_id=agent_id, version=new_version, snapshot=_snapshot(orm),
+    ))
+    await session.flush()
+
+    return _orm_to_model(orm)
+
+
+async def clone_agent(
+    session: AsyncSession, agent_id: uuid.UUID, new_name: str | None = None
+) -> Agent:
+    source = await get_agent_orm(session, agent_id)
+    orm = AgentORM(
+        id=uuid.uuid4(),
+        name=new_name or f"{source.name} (copy)",
+        model=source.model,
+        system_prompt=source.system_prompt,
+        tools_config=source.tools_config,
+        safety_policy=source.safety_policy,
+        config=source.config,
+    )
+    session.add(orm)
+    await session.flush()
+    await session.refresh(orm)
+
+    session.add(AgentVersionORM(
+        id=uuid.uuid4(), agent_id=orm.id, version=1, snapshot=_snapshot(orm),
+    ))
+    await session.flush()
+
     return _orm_to_model(orm)
 
 

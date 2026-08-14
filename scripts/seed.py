@@ -5,6 +5,7 @@ Usage:
 """
 
 import asyncio
+import os
 import uuid
 from datetime import UTC, datetime
 
@@ -25,7 +26,7 @@ from agentforge_common.orm import (
     RunORM,
     RunStepORM,
 )
-from agentforge_common.security import generate_api_key, hash_api_key
+from agentforge_common.security import encrypt_key, generate_api_key, hash_api_key
 
 
 async def seed() -> None:
@@ -193,7 +194,7 @@ async def seed() -> None:
                 key_hash=hash_api_key(dev_raw_key),
                 user_id="dev-user",
                 provider="openai",
-                encrypted_key="",
+                encrypted_key=encrypt_key(os.environ.get("OPENAI_API_KEY", "")),
             )
         )
 

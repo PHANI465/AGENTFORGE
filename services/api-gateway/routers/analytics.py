@@ -39,7 +39,12 @@ class UsageSummary(BaseModel):
     avg_cost_per_call_usd: float
 
 
-@router.get("/costs", response_model=DataResponse[list[CostBreakdownRow]])
+@router.get(
+    "/costs",
+    response_model=DataResponse[list[CostBreakdownRow]],
+    summary="Daily cost breakdown",
+    operation_id="getCostBreakdown",
+)
 async def cost_breakdown(
     agent_id: uuid.UUID | None = Query(default=None),
     days: int = Query(default=7, ge=1, le=90),
@@ -81,7 +86,12 @@ async def cost_breakdown(
     ])
 
 
-@router.get("/usage", response_model=DataResponse[UsageSummary])
+@router.get(
+    "/usage",
+    response_model=DataResponse[UsageSummary],
+    summary="Aggregate usage summary",
+    operation_id="getUsageSummary",
+)
 async def usage_summary(
     agent_id: uuid.UUID | None = Query(default=None),
     days: int = Query(default=7, ge=1, le=90),

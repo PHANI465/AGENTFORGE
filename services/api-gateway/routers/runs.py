@@ -15,8 +15,10 @@ from agentforge_common.envelope import DataResponse, ListMeta, ListResponse
 from agentforge_common.exceptions import AgentForgeError, BudgetExceededError
 from agentforge_common.models import Run, RunCreate
 from agentforge_common.orm import ApiKeyORM
+from agentforge_common.security import decrypt_key
 from dependencies import get_db, require_api_key
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
+from rate_limit import RATE_LIMIT_DEFAULT, RATE_LIMIT_RUN, limiter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/v1/agents", tags=["runs"])
@@ -28,8 +30,15 @@ class RuntimeError_(AgentForgeError):
     code = "runtime_error"
 
 
-@router.post("/{agent_id}/run", response_model=DataResponse[Run])
+@router.post(
+    "/{agent_id}/run",
+    response_model=DataResponse[Run],
+    summary="Execute an agent",
+    operation_id="runAgent",
+)
+@limiter.limit(RATE_LIMIT_RUN)
 async def run_agent(
+    request: Request,
     agent_id: uuid.UUID,
     payload: RunCreate,
     session: AsyncSession = Depends(get_db),
@@ -40,7 +49,7 @@ async def run_agent(
 
     tool_names = [t.name for t in agent.tools]
 
-    llm_api_key = auth.encrypted_key or os.getenv("OPENAI_API_KEY", "")
+    llm_api_key = decrypt_key(auth.encrypted_key) or os.getenv("OPENAI_API_KEY", "")
     if not llm_api_key:
         raise RuntimeError_("No LLM API key configured — set OPENAI_API_KEY or register a BYOK key")
 
@@ -109,8 +118,15 @@ async def run_agent(
     return DataResponse(data=run)
 
 
-@router.get("/{agent_id}/runs", response_model=ListResponse[Run])
+@router.get(
+    "/{agent_id}/runs",
+    response_model=ListResponse[Run],
+    summary="List runs for an agent",
+    operation_id="listAgentRuns",
+)
+@limiter.limit(RATE_LIMIT_DEFAULT)
 async def list_agent_runs(
+    request: Request,
     agent_id: uuid.UUID,
     limit: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
@@ -118,4 +134,7 @@ async def list_agent_runs(
 ) -> ListResponse[Run]:
     """Most recent runs for an agent, newest first."""
     runs = await crud_runs.list_runs_for_agent(session, agent_id, limit)
-    return ListResponse(data=runs, meta=ListMeta(next_cursor=None, limit=limit))
+    total = await crud_runs.count_runs_for_agent(session, agent_id)
+    return ListResponse(
+        data=runs, meta=ListMeta(total=total, next_cursor=None, limit=limit),
+    )

@@ -46,11 +46,15 @@ def main() -> None:
     headers = {"X-API-Key": args.api_key}
 
     with httpx.Client(base_url=BASE_URL, headers=headers, timeout=30.0) as client:
-        health_latencies = [timed(lambda: client.get("/health").raise_for_status()) for _ in range(20)]
+        health_latencies = [
+            timed(lambda: client.get("/health").raise_for_status())
+            for _ in range(20)
+        ]
         report("GET /health (no auth, no DB)", health_latencies)
 
         list_latencies = [
-            timed(lambda: client.get("/api/v1/agents?limit=10").raise_for_status()) for _ in range(20)
+            timed(lambda: client.get("/api/v1/agents?limit=10").raise_for_status())
+            for _ in range(20)
         ]
         report("GET /api/v1/agents (Postgres round-trip)", list_latencies)
 
@@ -76,7 +80,7 @@ def main() -> None:
                     ).raise_for_status()
                 )
             )
-        print(f"\nPOST .../run — same input x3 (1st = cache miss, 2nd/3rd = cache hit)")
+        print("\nPOST .../run — same input x3 (1st = cache miss, 2nd/3rd = cache hit)")
         for i, ms in enumerate(repeat_latencies):
             label = "miss" if i == 0 else "hit"
             print(f"  call {i + 1} ({label}): {ms:.1f}ms")

@@ -9,6 +9,8 @@ dependencies = [
     "agentforge-common",
     "httpx>=0.27",
     "prometheus-fastapi-instrumentator>=7.0",
+    "slowapi>=0.1.9",
+    "redis>=5.0",
 ]
 
 [tool.uv]

@@ -1,0 +1,98 @@
+# Dev-mode overrides — auto-merged by `docker compose up`.
+# Mounts host source code into containers so uvicorn --reload picks up
+# edits instantly without rebuilding images.
+#
+# Production deployments should use: docker compose -f docker-compose.yml up
+# (explicitly exclude this file to get the baked-in COPY behavior).
+
+services:
+  api-gateway:
+    volumes:
+      - ../../services/api-gateway:/app/services/api-gateway
+      - ../../packages/common:/app/packages/common
+    command:
+      - uv
+      - run
+      - --project
+      - /app
+      - uvicorn
+      - main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/services/api-gateway
+      - --reload-dir
+      - /app/packages/common
+
+  agent-runtime:
+    volumes:
+      - ../../services/agent-runtime:/app/services/agent-runtime
+      - ../../packages/common:/app/packages/common
+    command:
+      - uv
+      - run
+      - --project
+      - /app
+      - uvicorn
+      - main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8001"
+      - --reload
+      - --reload-dir
+      - /app/services/agent-runtime
+      - --reload-dir
+      - /app/packages/common
+
+  eval-service:
+    volumes:
+      - ../../services/eval-service:/app/services/eval-service
+      - ../../packages/common:/app/packages/common
+    command:
+      - uv
+      - run
+      - --project
+      - /app
+      - uvicorn
+      - main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8002"
+      - --reload
+      - --reload-dir
+      - /app/services/eval-service
+      - --reload-dir
+      - /app/packages/common
+
+  trace-collector:
+    volumes:
+      - ../../services/trace-collector:/app/services/trace-collector
+      - ../../packages/common:/app/packages/common
+    command:
+      - uv
+      - run
+      - --project
+      - /app
+      - uvicorn
+      - main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8003"
+      - --reload
+      - --reload-dir
+      - /app/services/trace-collector
+      - --reload-dir
+      - /app/packages/common
+
+  dashboard:
+    volumes:
+      - ../../dashboard/src:/app/src
+      - ../../dashboard/index.html:/app/index.html
+    environment:
+      - CHOKIDAR_USEPOLLING=true
