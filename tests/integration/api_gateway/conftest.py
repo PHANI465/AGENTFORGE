@@ -89,11 +89,19 @@ async def api_key(session) -> str:
 async def client(session):
     import dependencies
     import main as app_module
+    from rate_limit import limiter
 
     async def override_get_db():
         yield session
 
     app_module.app.dependency_overrides[dependencies.get_db] = override_get_db
+
+    # The api_key fixture is session-scoped, so every test shares one API
+    # key — and slowapi keys its buckets by that same string. Without this,
+    # the 10/minute limit on /run endpoints trips partway through the suite
+    # and turns later tests' 200s into 429s. Real traffic doesn't share a
+    # key across dozens of requests in the same second the way tests do.
+    limiter.enabled = False
 
     transport = ASGITransport(app=app_module.app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

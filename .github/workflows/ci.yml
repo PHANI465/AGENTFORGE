@@ -43,7 +43,11 @@ jobs:
       - name: Run tests
         # tests/integration/api_gateway/conftest.py talks to Postgres on
         # localhost:5432 with the agentforge/agentforge creds — matches the
-        # postgres service container above.
+        # postgres service container above. ENCRYPTION_MASTER_KEY is a
+        # throwaway key for CI only — encrypt_key()/decrypt_key() require
+        # one to be set, real deployments generate their own.
+        env:
+          ENCRYPTION_MASTER_KEY: "41d6du78ymDknwOXO5oBmrZ-HTbRpGNnVzNzxQ2Ju5M="
         run: uv run pytest tests/ -q
 
   dashboard:
