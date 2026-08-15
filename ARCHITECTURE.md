@@ -59,22 +59,32 @@ The single entry point for all platform interactions. FastAPI application.
 
 **Key Endpoints:**
 ```
-POST   /api/v1/agents              — Register a new agent
-GET    /api/v1/agents              — List agents
-GET    /api/v1/agents/{id}         — Get agent details
-PUT    /api/v1/agents/{id}         — Update agent
-DELETE /api/v1/agents/{id}         — Delete agent
-POST   /api/v1/agents/{id}/run     — Execute an agent (send a message)
-GET    /api/v1/agents/{id}/runs    — List past runs
-GET    /api/v1/runs/{id}/trace     — Get full execution trace
+POST   /api/v1/agents               — Register a new agent
+GET    /api/v1/agents               — List agents (filter by ?status, ?search)
+GET    /api/v1/agents/{id}          — Get agent details
+PUT    /api/v1/agents/{id}          — Update agent
+DELETE /api/v1/agents/{id}          — Delete agent
+POST   /api/v1/agents/{id}/clone    — Clone an agent (new UUID + version 1)
+GET    /api/v1/agents/{id}/versions — List agent version history
+POST   /api/v1/agents/{id}/rollback — Roll back to a previous version
+POST   /api/v1/agents/{id}/run      — Execute an agent (send a message)
+GET    /api/v1/agents/{id}/runs     — List past runs
+GET    /api/v1/runs/{id}/trace      — Get full execution trace
 
-POST   /api/v1/evals               — Create an evaluation run
-GET    /api/v1/evals/{id}          — Get eval results
-GET    /api/v1/evals/{id}/compare  — Compare two eval runs
+POST   /api/v1/eval-suites               — Create an eval suite
+GET    /api/v1/eval-suites               — List eval suites
+GET    /api/v1/eval-suites/{id}          — Get eval suite
+POST   /api/v1/eval-suites/{id}/run      — Run a suite, get scored results
+GET    /api/v1/eval-suites/{id}/runs     — List runs for a suite
+GET    /api/v1/eval-runs/{id}            — Get eval run results
+GET    /api/v1/eval-runs/{id}/compare/{other_id} — Compare two eval runs
 
 GET    /api/v1/analytics/costs     — Cost breakdown by agent/day
 GET    /api/v1/analytics/usage     — Token usage analytics
-GET    /api/v1/analytics/health    — System health metrics
+
+POST   /api/v1/api-keys            — Create an API key (BYOK LLM key, encrypted at rest)
+GET    /api/v1/api-keys            — List API keys
+DELETE /api/v1/api-keys/{id}       — Revoke an API key
 ```
 
 **Depends on:** PostgreSQL, Agent Runtime, Eval Service
@@ -242,10 +252,12 @@ cost_records
 
 This section describes the original design intent. **See
 [`docs/security.md`](docs/security.md) for what's actually implemented**,
-including an honest list of gaps (e.g. BYOK keys are not currently encrypted
-at rest, despite the intent below) — that document supersedes this one.
+including an honest list of what's still missing (regex-only PII detection,
+no Redis auth/TLS, no inter-service mTLS) — that document supersedes this one.
 
-- API keys stored encrypted at rest (AES-256 via Fernet)
+- BYOK LLM keys encrypted at rest (Fernet, AES-128-CBC + HMAC-SHA256)
+- Rate limiting at the Gateway (per-key, slowapi) — 60/min default, 10/min
+  for LLM-calling endpoints
 - User LLM keys never logged, never included in traces
 - Safety policy checks run in-process (not bypassable)
 - All API endpoints require authentication

@@ -22,24 +22,29 @@ gap is more useful than hiding it.
   digest is what you want for a per-request auth lookup.
 - The raw key is shown exactly once, at generation time
   (`POST /api/v1/api-keys`), and never stored or logged again — only its hash.
+- Keys can be revoked (`DELETE /api/v1/api-keys/{id}`) with two guards: a
+  caller cannot revoke the key authenticating their own request, and cannot
+  revoke the last remaining key — both would lock every caller out with no
+  way back in.
 
-## BYOK LLM key storage (ADR-002) — a known gap
+## BYOK LLM key storage (ADR-002)
 
 Per ADR-002, users bring their own LLM provider key (`api_keys.encrypted_key`).
-**Despite the column name, this key is currently stored in plaintext** — the
-Fernet/AES-256 encryption-at-rest described in the original `ARCHITECTURE.md`
-design doc was never actually implemented. This is the single biggest gap
-between this project's design intent and its current code, and would be the
-first thing to fix before this ever held a real user's credentials. The local
-dev fallback (`OPENAI_API_KEY` env var, used by every milestone's live
-verification) sidesteps the column entirely, which is part of why the gap
-went unaddressed this long.
-
-**If picking this up**: wrap `encrypted_key` reads/writes with
-`cryptography.fernet.Fernet`, keyed from a secret pulled from an actual secret
-manager (AWS Secrets Manager / KMS in the Terraform-provisioned environments —
-see `infra/terraform/modules/eks`'s OIDC provider, which exists specifically
-so this could use IRSA to read KMS without static credentials).
+This key is encrypted at rest using Fernet symmetric encryption
+(AES-128-CBC + HMAC-SHA256, via `cryptography.fernet.Fernet`) — see
+`encrypt_key()`/`decrypt_key()` in `agentforge_common/security.py`. The
+master key is read from the `ENCRYPTION_MASTER_KEY` env var, generated once
+with:
+```
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+In the Terraform-provisioned environments, this key would come from AWS
+Secrets Manager / KMS rather than a plain env var — `infra/terraform/modules/eks`
+already provisions the OIDC provider needed for IRSA (IAM Roles for Service
+Accounts) so pods can reach KMS without static credentials. That wiring isn't
+done yet; the env var is the local/dev-appropriate version of the same idea.
+The local dev fallback (`OPENAI_API_KEY` env var) still exists and bypasses
+the encrypted column entirely when no BYOK key is registered.
 
 ## Safety policy enforcement (Milestone 4)
 
@@ -72,11 +77,15 @@ so this could use IRSA to read KMS without static credentials).
   see `infra/terraform/modules/elasticache`), but would need
   `transit_encryption_enabled = true` + AUTH token before holding anything
   more sensitive than an LLM response cache.
-- **No rate limiting** exists at the Gateway despite being mentioned in the
-  original `ARCHITECTURE.md` design doc — the only per-agent request throttle
-  that actually exists is the daily cost budget (`daily_budget_usd`,
-  Milestone 7), which limits spend, not request volume. A public deployment
-  would want both.
+- **Rate limiting** is enforced at the Gateway via `slowapi`
+  (`services/api-gateway/rate_limit.py`), keyed by the caller's API key (or
+  client IP if unauthenticated). Defaults: 60 requests/minute for general
+  endpoints, 10/minute for the expensive LLM-calling routes (`/run` and
+  `/eval-suites/{id}/run`), both overridable via `RATE_LIMIT_DEFAULT` /
+  `RATE_LIMIT_RUN` env vars. This is separate from and complements the daily
+  cost budget (`daily_budget_usd`, Milestone 7), which limits spend, not
+  request volume — a client under budget can still be throttled by rate, and
+  vice versa.
 - Inter-service HTTP (Gateway → Runtime → Eval Service) has no mTLS — all
   traffic stays inside the Kubernetes cluster network / Docker Compose bridge
   network, never crossing a public boundary directly.
@@ -114,11 +123,18 @@ so this could use IRSA to read KMS without static credentials).
 
 ## Summary: what would need to change before production
 
-1. Actually encrypt `api_keys.encrypted_key` at rest (the one real gap above).
-2. Add rate limiting at the Gateway (requests/minute per key, not just $/day).
-3. Enable Redis AUTH + TLS if ElastiCache ever holds more than a response cache.
-4. Add mTLS or a service mesh if inter-service traffic ever crosses a
+1. Replace regex-based PII detection with a proper classifier (e.g. Microsoft
+   Presidio) — the current checks catch structured PII (emails, SSNs,
+   card numbers) but not free-text descriptions of sensitive information.
+2. Enable Redis AUTH + TLS if ElastiCache ever holds more than a response cache.
+3. Add mTLS or a service mesh if inter-service traffic ever crosses a
    less-trusted network boundary than "inside one VPC."
-5. Swap SHA-256-hashed API keys for a rotating/short-lived token scheme
+4. Swap SHA-256-hashed API keys for a rotating/short-lived token scheme
    (e.g. JWTs with expiry) if this ever supports multi-tenant, non-developer
-   users.
+   users — keys can be manually revoked today, but don't auto-expire.
+5. Move `ENCRYPTION_MASTER_KEY` from a plain env var to AWS Secrets Manager /
+   KMS via IRSA in the deployed environments (the OIDC plumbing already
+   exists in `infra/terraform/modules/eks`; only the KMS read is missing).
+
+BYOK key encryption and Gateway rate limiting were both on this list and are
+now implemented — see the sections above.

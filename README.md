@@ -100,12 +100,14 @@ uv run --project ../.. uvicorn main:app --reload --port 8000
 Every milestone below was verified against the live stack, not just unit-tested — see [`MILESTONES.md`](MILESTONES.md) for the full bug-by-bug account of what verification caught that code review alone wouldn't have.
 
 - **Agent execution**: a full think→act→observe loop with tool calling, real cost tracking, and configurable timeouts/iteration caps.
+- **Agent lifecycle**: cloning (deep-copy config, new UUID + version 1), full version history with rollback, and list filtering by status/name search.
 - **Safety enforcement**: PII detection + keyword blocking, checked in-process before every tool call and after every LLM response — not a prompt-level instruction a model could talk its way around.
-- **Tracing**: OpenTelemetry spans for every LLM call, tool call, and safety check, queryable per-run and visualized in the Trace Viewer.
+- **Security**: BYOK LLM keys encrypted at rest (Fernet, AES-128-CBC + HMAC-SHA256), per-key rate limiting (slowapi, 60/min default / 10/min on LLM-calling routes), and API key revocation with lockout guards.
+- **Tracing**: OpenTelemetry spans for every LLM call, tool call, and safety check, queryable per-run and visualized in the Trace Viewer, with request-ID correlation across services via structured logging.
 - **Evaluation**: test suites scored by LLM-as-judge + tool-call correctness, with version-to-version comparison.
 - **Token optimization**: smart model routing, Redis-backed response caching (measured **~13x latency speedup, 100% cost reduction** on cache hits — see [`docs/benchmarks.md`](docs/benchmarks.md)), optional prompt compression, and per-agent daily budget enforcement.
 - **Dashboard**: all 6 pages (catalog, detail, trace viewer, evals, cost analytics, settings) browser-verified against live seeded data.
-- **Infrastructure**: Terraform (VPC/EKS/RDS/ElastiCache/ECR/S3) + a data-driven Helm chart, both validated (`helm lint`/`helm template` across 3 environments, every Docker image actually built) — not required to run the platform (Docker Compose is $0, see [ADR-003](CLAUDE.md#adr-003-docker-compose-for-dev-k8s-for-prod)), but real and deployable. Cost breakdown: [`docs/aws-cost-estimate.md`](docs/aws-cost-estimate.md).
+- **Infrastructure**: Terraform (VPC/EKS/RDS/ElastiCache/ECR/S3) + a data-driven Helm chart, both validated (`helm lint`/`helm template` across 3 environments, every Docker image actually built) — not required to run the platform (Docker Compose is $0, see [ADR-003](CLAUDE.md#adr-003-docker-compose-for-dev-k8s-for-prod)), but real and deployable. Cost breakdown: [`docs/aws-cost-estimate.md`](docs/aws-cost-estimate.md). `make dev` starts everything with hot-reload; Prometheus alerting rules and Docker healthchecks are wired in for both dev and prod.
 
 ## Docs
 

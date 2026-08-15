@@ -46,14 +46,32 @@ Every response is wrapped consistently (per `CLAUDE.md`'s API design convention)
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/v1/agents` | Create an agent |
-| `GET` | `/api/v1/agents` | List agents (cursor-paginated) |
+| `GET` | `/api/v1/agents` | List agents (cursor-paginated, `?status=`, `?search=`) |
 | `GET` | `/api/v1/agents/{agent_id}` | Get one agent |
 | `PUT` | `/api/v1/agents/{agent_id}` | Update an agent |
 | `DELETE` | `/api/v1/agents/{agent_id}` | Delete an agent |
+| `POST` | `/api/v1/agents/{agent_id}/clone` | Clone an agent (new UUID, version reset to 1) |
+| `GET` | `/api/v1/agents/{agent_id}/versions` | List an agent's version history |
+| `POST` | `/api/v1/agents/{agent_id}/rollback` | Roll back to a previous version |
 
 ```bash
 curl -H "X-API-Key: $AGENTFORGE_API_KEY" \
   http://localhost:8000/api/v1/agents?limit=1
+```
+
+Filter and search the list:
+
+```bash
+curl -H "X-API-Key: $AGENTFORGE_API_KEY" \
+  "http://localhost:8000/api/v1/agents?status=active&search=support"
+```
+
+Clone an existing agent (optionally naming the copy):
+
+```bash
+curl -X POST -H "X-API-Key: $AGENTFORGE_API_KEY" -H "Content-Type: application/json" \
+  http://localhost:8000/api/v1/agents/$AGENT_ID/clone \
+  -d '{"name": "my-agent (staging copy)"}'
 ```
 
 ```json
@@ -164,7 +182,8 @@ curl -H "X-API-Key: $AGENTFORGE_API_KEY" \
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/v1/api-keys` | List keys (never returns the raw secret, only metadata) |
-| `POST` | `/api/v1/api-keys` | Generate a new key (raw value shown once) |
+| `POST` | `/api/v1/api-keys` | Generate a new key (raw value shown once); optional `llm_api_key` is encrypted at rest |
+| `DELETE` | `/api/v1/api-keys/{key_id}` | Revoke a key. Guarded: can't revoke the key authenticating the request, and can't revoke the last remaining key |
 
 ```bash
 curl -X POST -H "X-API-Key: $AGENTFORGE_API_KEY" -H "Content-Type: application/json" \
@@ -172,12 +191,20 @@ curl -X POST -H "X-API-Key: $AGENTFORGE_API_KEY" -H "Content-Type: application/j
   -d '{"user_id": "dev-user", "provider": "openai"}'
 ```
 
+## Rate limits
+
+`POST /api/v1/agents/{id}/run` and `POST /api/v1/eval-suites/{id}/run` are
+limited to 10 requests/minute per API key by default (`RATE_LIMIT_RUN`); all
+other endpoints are limited to 60/minute (`RATE_LIMIT_DEFAULT`). Both are
+overridable via env var. Exceeding the limit returns `429`.
+
 ## Errors
 
 | HTTP status | `error.code` | When |
 |---|---|---|
 | 401 | `unauthorized` | Missing or invalid `X-API-Key` |
-| 404 | `not_found` | Agent/run/suite doesn't exist |
-| 409 | `conflict` | (reserved for future uniqueness constraints) |
+| 404 | `not_found` | Agent/run/suite/key doesn't exist |
+| 409 | `conflict` | Revoking your own key or the last remaining key |
 | 422 | `validation_error` | Request body fails Pydantic validation |
 | 429 | `budget_exceeded` | Agent's `daily_budget_usd` already spent today |
+| 429 | `rate_limit_exceeded` | Too many requests for this API key within the window |
