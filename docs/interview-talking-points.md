@@ -34,9 +34,24 @@ Two good stories, both from *live verification*, not code review:
    `tsc` nor `vite build` running locally would ever have caught this — the
    failure only exists inside the image build pipeline.
 
-Both are documented with full detail in `MILESTONES.md` — the project keeps
-a "bugs caught and fixed" section per milestone specifically so this kind of
-thing doesn't get lost.
+3. **A CI env var gap had been hiding two real bugs for who knows how long**
+   (post-milestone hardening). CI was missing `ENCRYPTION_MASTER_KEY` after
+   BYOK encryption shipped, so the full test suite — unit and integration
+   together — had never once completed successfully anywhere, in CI or
+   locally. Fixing the env var and actually running it end-to-end against a
+   real Postgres immediately surfaced two more bugs that every mocked unit
+   test had been sailing past: agent deletion always raised `IntegrityError`
+   (a SQLAlchemy relationship was nullifying a `NOT NULL` FK column instead
+   of trusting the database's own `ON DELETE CASCADE`), and "list recent
+   runs" wasn't reliably newest-first (`datetime.now(UTC)` returned the
+   identical value across several rapid sequential calls on this dev
+   machine, and a single-column sort has no way to break that tie). Neither
+   bug touches anything a mock would exercise — a fake DB session doesn't
+   enforce foreign keys, and a mocked clock doesn't have resolution limits.
+
+All three are documented with full detail in `MILESTONES.md` — the project
+keeps a "bugs caught and fixed" section per milestone specifically so this
+kind of thing doesn't get lost.
 
 ## "Why LiteLLM instead of building your own LLM proxy?"
 
@@ -54,10 +69,10 @@ that LiteLLM has no opinion about — that's the right line to draw.
 ADR-002 — BYOK (bring your own key). Users supply their own OpenAI key;
 AgentForge tracks spend by counting tokens × published pricing, never
 proxies actual billing. Simpler trust model, no payment infrastructure
-needed. The honest gap: that key is currently stored in plaintext in
-Postgres (see `docs/security.md`) — worth naming unprompted, since noticing
-your own gap before someone else points it out is exactly the signal a good
-engineer wants to send.
+needed. The key is encrypted at rest with Fernet (AES-128-CBC + HMAC-SHA256,
+see `docs/security.md`), and Gateway-level rate limiting (slowapi, per-key)
+complements the per-agent daily budget so both spend and request volume are
+bounded.
 
 ## "How would this actually run in production?"
 
@@ -74,10 +89,14 @@ realistic use case of spinning it up for a demo and tearing it down after
 
 ## "What would you do differently, or do next?"
 
-Straight answers, not a sales pitch:
-- Encrypt the BYOK key at rest — the single most important thing missing.
-- Rate limiting at the Gateway — currently only a $/day budget cap exists,
-  no requests/minute throttle.
+Straight answers, not a sales pitch. BYOK encryption and Gateway rate
+limiting used to top this list — both are done now, which is itself worth
+mentioning unprompted (naming a gap and then actually closing it in a later
+pass is a stronger signal than either alone):
+- Streaming responses — SSE + LiteLLM's `stream=True`, so a run doesn't feel
+  like a 1-5 second silent wait.
+- Multi-provider support — LiteLLM already handles 140+ providers; the
+  `api_keys` table would need to support more than one provider key per user.
 - The regex-based PII detector (`services/agent-runtime/safety.py`) catches
   structured PII (emails, SSNs, card numbers) but not free-text descriptions
   of sensitive information — a real system would want a proper PII

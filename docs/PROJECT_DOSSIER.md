@@ -648,13 +648,27 @@ Every milestone was verified against the live stack, not just unit-tested. See `
 
 ### Difficulty 10: Stale Documentation Claims
 
-**Problem**: `ARCHITECTURE.md` claimed BYOK keys were "encrypted at rest via Fernet" - they never were.
+**Problem**: `ARCHITECTURE.md` claimed BYOK keys were "encrypted at rest via Fernet" - at the time, they weren't.
 
-**Root cause**: The column is named `encrypted_key` (aspirational), but the code stores plaintext. The encryption was a design intent that never became code.
+**Root cause**: The column is named `encrypted_key` (aspirational), but the code stored plaintext. The encryption was a design intent that hadn't yet become code.
 
-**Fix**: Updated docs to point to `docs/security.md` as authoritative source. Documented the gap honestly.
+**Fix**: Updated docs to point to `docs/security.md` as authoritative source and documented the gap honestly - then, in a later hardening pass, actually implemented Fernet encryption, closing the gap the docs had flagged.
 
-**Lesson**: Documentation describing what you *intended* to build, not what you *actually* built, is worse than no documentation. It creates false confidence.
+**Lesson**: Documentation describing what you *intended* to build, not what you *actually* built, is worse than no documentation. It creates false confidence. Naming the gap honestly is what made it get fixed instead of forgotten.
+
+### Difficulty 11: Two Bugs Only a Real Database Could Catch
+
+**Problem**: The CI workflow had been silently failing on every push (missing `ENCRYPTION_MASTER_KEY`, see the security section above) - which meant the full test suite (`pytest tests/ -q`, unit + integration together) had never actually completed successfully anywhere. Once the env var was fixed and the suite ran end-to-end against a real Postgres for the first time, two more bugs surfaced immediately:
+
+1. **Deleting any agent raised `IntegrityError`.** `AgentORM.versions` is a SQLAlchemy relationship with no `passive_deletes`, so on `session.delete(agent)` the ORM tried to null out `agent_versions.agent_id` (a `NOT NULL` column) in Python before issuing the delete - instead of trusting the FK's existing `ON DELETE CASCADE` to handle it in the database. Since every agent gets a version-1 snapshot on creation, this made agent deletion universally broken, not an edge case.
+
+2. **"List recent runs" wasn't reliably newest-first.** `started_at` is assigned from `datetime.now(UTC)` in Python at run-completion time. On this dev machine, calling that five times in a tight loop returned the *identical* microsecond value each time - so three runs completed back-to-back in a test could tie, and `ORDER BY started_at DESC` alone doesn't define an order for ties.
+
+**How caught**: Not by reading the code - by running `pytest tests/` against a real Postgres database instead of mocks, immediately after fixing the CI env var. Both bugs are exactly the kind that pass every unit test (which don't exercise a real FK constraint or real clock behavior) and only show up under integration testing.
+
+**Fix**: `passive_deletes=True` on the `versions` relationship (let the database's cascade do the work). `complete_run` now checks the agent's most recent `started_at` and bumps by a microsecond if the new value would tie or precede it, guaranteeing strict per-agent ordering regardless of clock resolution.
+
+**Lesson**: A green CI badge that's actually been red the whole time is worse than no CI at all - it hides exactly the class of bug (real FK behavior, real clock precision) that unit tests with mocked dependencies cannot catch. The first time a full suite actually runs against real infrastructure is often the first time it's told the truth.
 
 ---
 
@@ -665,7 +679,7 @@ Every milestone was verified against the live stack, not just unit-tested. See `
 Users provide their own LLM API keys. AgentForge never pays for LLM usage.
 - **Pro**: No payment infrastructure needed. Users control their own spend
 - **Con**: Users must already have an OpenAI account
-- **Gap**: Key stored in plaintext despite column named `encrypted_key`
+- **Now**: Key is encrypted at rest with Fernet (AES-128-CBC + HMAC-SHA256), matching the `encrypted_key` column name
 
 ### Decision 2: Stateless Execution Services
 
@@ -960,11 +974,11 @@ Building the scaffolding first (health endpoints that return `{"status": "ok"}`)
 
 **"Why LiteLLM?"**: ADR-001: do not build what exists. 53K+ stars. AgentForge adds domain-specific routing on top - that is the right line to draw.
 
-**"Multi-tenant costs?"**: BYOK - users supply their own key. Honest gap: key stored in plaintext. Worth naming unprompted.
+**"Multi-tenant costs?"**: BYOK - users supply their own key, encrypted at rest with Fernet. Rate limiting (slowapi, per-key) and per-agent daily budgets both guard against runaway spend and request volume.
 
 **"Production deployment?"**: Terraform + Helm, both validated. $0 locally, $0.22/hr on AWS. No static AWS keys anywhere including CI/CD.
 
-**"What next?"**: Encrypt BYOK key (#1 gap), rate limiting, proper PII classifier instead of regex, streaming responses.
+**"What next?"**: Streaming responses, multi-provider support, a proper PII classifier instead of regex. BYOK encryption and rate limiting - previously the top two gaps - are done.
 
 **"Most agent-native part?"**: Trace Viewer traces the reasoning loop, not a single API call. Eval scores tool correctness, not just text matching.
 
@@ -1083,17 +1097,18 @@ curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
 
 | Metric | Value |
 |---|---|
-| Total milestones | 10 (all complete) |
-| Backend test suite | 107 tests, all passing |
+| Total milestones | 10 (all complete), plus a production-hardening pass |
+| Backend test suite | 163 tests (105 unit + 58 integration), all passing |
 | Python services | 4 |
 | Frontend pages | 6 |
 | Database tables | 9 |
+| API endpoints | 23 |
 | Terraform modules | 6 |
 | Docker containers | 9 |
 | Grafana panels | 14 |
+| Prometheus alerting rules | 4 |
 | Custom Prometheus metrics | 8 |
-| API endpoints | 20+ |
-| Bugs caught by live verification | 15+ |
+| Bugs caught by live verification | 15+ (milestones) + 2 (found running the full suite against real Postgres for the first time) |
 
 ---
 

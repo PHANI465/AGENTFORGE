@@ -252,7 +252,7 @@
 - [x] Demo video/script — `docs/demo-script.md` (no video — a written walkthrough script; recording/screen-capture tooling wasn't available in this environment either)
 - [x] Interview talking points document — `docs/interview-talking-points.md`
 - [x] Performance benchmarks — `docs/benchmarks.md` + `scripts/benchmark.py`, run for real against the live stack (see verification below)
-- [x] Security considerations document — `docs/security.md`, including an honest gap list (BYOK keys are currently stored in plaintext despite the `encrypted_key` column name — flagged rather than hidden)
+- [x] Security considerations document — `docs/security.md`, including an honest gap list (at the time, BYOK keys were stored in plaintext despite the `encrypted_key` column name — flagged rather than hidden, and later closed in Milestone 11 with real Fernet encryption)
 - [x] Contributing guide — `CONTRIBUTING.md`
 
 **Done when**: A hiring manager can clone the repo, run it in 5 minutes, and understand what it does. ✅ **Every number in every new doc came from actually running the stack, not estimation: `scripts/benchmark.py` was run live and produced real figures (gateway overhead ~3-10ms, cold LLM call latency 447ms-4.5s depending on OpenAI's own variance, cache-hit speedup measured at 13.3x with a $0→cost drop on hits, a real 2-test-case eval suite run in 2.4s). All markdown cross-links across every new/changed doc were verified to resolve to real files (none broken). The full backend test suite was re-run after all doc/infra changes: still 107/107 passing. The live docker-compose stack (dashboard + api-gateway) was reconfirmed healthy throughout — nothing in this milestone touched application code.**
@@ -260,5 +260,33 @@
 **Bugs/gaps caught during verification:**
 1. The benchmark script's first run failed outright (`400: No LLM API key configured`) — the `api-gateway`/`agent-runtime` containers had been recreated earlier in the session with a bare `docker compose up -d` (no `--env-file .env`), so `OPENAI_API_KEY` never reached them despite being set in `.env`. This is the exact same class of bug caught live during Milestone 3 verification (env-file lookup is cwd-relative, not compose-file-relative) — recurring specifically because it's an easy command to type without the flag. Fixed by recreating both containers with `--env-file .env` explicitly; now called out directly in `docs/demo-script.md`'s "if something breaks live" section so it doesn't surprise a future demo.
 2. Writing `docs/security.md` surfaced that `ARCHITECTURE.md`'s original security section (BYOK keys "encrypted at rest via Fernet") was never actually implemented — `api_keys.encrypted_key` stores plaintext. This was true since Milestone 3 but never written down anywhere; now documented as the top item in `docs/security.md`'s gap list, and `ARCHITECTURE.md` itself was updated to point at the accurate doc instead of repeating the stale claim.
+
+---
+
+## Milestone 11: Production Hardening ✅ DONE (2026-08-14)
+**Goal**: Close the security/reliability gaps `docs/security.md` had documented honestly in Milestone 10, add the features a real deployment would need, and add the dashboard UI + test coverage those features were missing.
+
+**Deliverables — 19 production-hardening improvements:**
+- [x] BYOK key encryption at rest — Fernet (AES-128-CBC + HMAC-SHA256), `ENCRYPTION_MASTER_KEY` env var, `encrypt_key()`/`decrypt_key()` in `agentforge_common/security.py`
+- [x] Rate limiting — `slowapi`, per-API-key, 60/min default / 10/min on LLM-calling routes (`RATE_LIMIT_DEFAULT` / `RATE_LIMIT_RUN`)
+- [x] API key revocation — `DELETE /api/v1/api-keys/{id}`, guarded against self-revocation and revoking the last key
+- [x] Agent cloning — `POST /api/v1/agents/{id}/clone`, deep-copies config to a new UUID + version-1 snapshot
+- [x] Agent list filtering — `?status=` and `?search=` (case-insensitive) on `GET /api/v1/agents`, plus `total` in pagination meta
+- [x] Structured logging (structlog) across all 4 services, request-scoped via `X-Request-ID` middleware
+- [x] Graceful shutdown — FastAPI `lifespan` disposes DB connection pools on SIGTERM
+- [x] Docker healthchecks on every app container; Prometheus alerting rules (HighErrorRate, HighLatencyP99, ServiceDown, HighRequestRate)
+- [x] Hot-reload dev environment — `docker-compose.override.yml` + `make dev`
+- [x] Field-level Pydantic validation (length limits, numeric bounds) across all request models
+- [x] OpenAPI `operation_id`/`summary` on every endpoint (clean client codegen)
+- [x] CORS tightened to explicit methods/headers instead of a wildcard
+- [x] Dashboard UI for the above: agent search/status filter on the catalog page, a Clone button on agent detail, a Revoke button per API key in Settings (the backend endpoints existed with no UI until this pass)
+- [x] Test coverage for previously-untested files: `middleware.py`, `rate_limit.py`, `logging.py` (unit), plus integration tests for clone, key revocation (including both guards), and list filtering
+
+**Done when**: `uv run ruff check .` clean, full test suite green, dashboard builds and lints clean. ✅ **163 tests passing (105 unit + 58 integration) — up from 107 at the end of Milestone 10 — all against a real Postgres, not mocks. `npm run build` and `npm run lint` both clean on the dashboard.**
+
+**Bugs caught during verification:**
+1. **CI had been silently broken since BYOK encryption shipped.** `.github/workflows/ci.yml` never set `ENCRYPTION_MASTER_KEY`, so `tests/integration/api_gateway/conftest.py`'s `encrypt_key()` call raised `RuntimeError` on every push — meaning the full test suite (`pytest tests/`, unit + integration together) had never once completed successfully anywhere, in CI or locally. Fixed by adding a throwaway test-only key as a job env var.
+2. **Rate limiting broke integration tests once CI could actually run them.** Several tests call a rate-limited endpoint (`/run`) more than 10 times against the same API key within one test, which the 10/minute default started rejecting with 429s that the tests weren't expecting. Fixed by disabling the limiter for the test client (`limiter.enabled = False` in `conftest.py`) — rate limiting under test isn't what these tests are checking, and real traffic never repeats a key that fast.
+3. **Once the suite actually ran end-to-end against real Postgres, two more bugs surfaced immediately** — both invisible to mocked unit tests: (a) deleting *any* agent raised `IntegrityError`, because `AgentORM.versions` had no `passive_deletes` and SQLAlchemy tried to null out `agent_versions.agent_id` (`NOT NULL`) in Python instead of trusting the FK's existing `ON DELETE CASCADE` — since every agent gets a version-1 snapshot on creation, this made deletion universally broken, not an edge case; (b) "list recent runs, newest first" wasn't reliably ordered, because `started_at` is assigned from `datetime.now(UTC)` in Python and this dev machine's clock returned the *identical* value across several rapid sequential calls, so a single-column `ORDER BY` couldn't break the tie. Fixed with `passive_deletes=True` on the relationship, and by having `complete_run` bump `started_at` by a microsecond whenever it would tie or precede the agent's most recent run.
 
 ---
