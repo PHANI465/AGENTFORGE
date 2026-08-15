@@ -74,7 +74,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 // --- Agents ---
 
 export const agentsApi = {
-  list: () => request<ListResponse<Agent>>("/api/v1/agents?limit=100"),
+  list: (opts?: { status?: string; search?: string }) => {
+    const params = new URLSearchParams({ limit: "100" })
+    if (opts?.status) params.set("status", opts.status)
+    if (opts?.search) params.set("search", opts.search)
+    return request<ListResponse<Agent>>(`/api/v1/agents?${params.toString()}`)
+  },
   get: (id: string) => request<DataResponse<Agent>>(`/api/v1/agents/${id}`),
   create: (payload: AgentCreate) =>
     request<DataResponse<Agent>>("/api/v1/agents", {
@@ -88,6 +93,11 @@ export const agentsApi = {
     }),
   delete: (id: string) =>
     request<void>(`/api/v1/agents/${id}`, { method: "DELETE" }),
+  clone: (id: string, name?: string) =>
+    request<DataResponse<Agent>>(`/api/v1/agents/${id}/clone`, {
+      method: "POST",
+      body: JSON.stringify(name ? { name } : {}),
+    }),
 }
 
 // --- Runs ---
@@ -147,4 +157,6 @@ export const apiKeysApi = {
       method: "POST",
       body: JSON.stringify({ user_id: userId, provider }),
     }),
+  delete: (id: string) =>
+    request<void>(`/api/v1/api-keys/${id}`, { method: "DELETE" }),
 }

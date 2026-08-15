@@ -1,7 +1,7 @@
 """Run/RunStep/CostRecord persistence — stores execution results in Postgres."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from agentforge_common.enums import RunStatus, RunStepType
@@ -92,10 +92,26 @@ async def complete_run(
     """Finalise a Run with its output, steps, and cost record."""
     now = datetime.now(UTC)
 
+    started = run_orm.started_at
+    if started is None:
+        # Guard against clock resolution coarser than the gap between
+        # sequential run completions for the same agent (observed on this
+        # platform: datetime.now(UTC) can return an identical value across
+        # several rapid successive calls) — without this, "list recent runs,
+        # newest first" isn't reliably ordered when runs complete in a tight
+        # loop. Bumping by a microsecond keeps started_at strictly
+        # increasing per agent without needing a schema-level tiebreaker.
+        last_started = await session.scalar(
+            select(func.max(RunORM.started_at)).where(RunORM.agent_id == run_orm.agent_id)
+        )
+        started = now
+        if last_started is not None and started <= last_started:
+            started = last_started + timedelta(microseconds=1)
+
     run_orm.output = output
     run_orm.status = status
     run_orm.trace_id = trace_id
-    run_orm.started_at = run_orm.started_at or now
+    run_orm.started_at = started
     run_orm.completed_at = now
 
     for step in steps_data:

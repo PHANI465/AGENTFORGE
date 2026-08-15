@@ -74,6 +74,18 @@ export function Input({ className = "", ...props }: React.InputHTMLAttributes<HT
   )
 }
 
+export function Select({
+  className = "",
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={`w-full rounded-sm border border-deck-600 bg-deck-900 px-3 py-2 text-sm text-deck-50 focus:border-signal/60 focus:outline-none ${className}`}
+      {...props}
+    />
+  )
+}
+
 export function Textarea({
   className = "",
   ...props

@@ -1,7 +1,8 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { agentsApi } from "../api/client"
 import { useApi } from "../lib/useApi"
+import type { AgentStatus } from "../api/types"
 import {
   Button,
   Card,
@@ -11,6 +12,7 @@ import {
   Input,
   LoadingState,
   PageHeader,
+  Select,
   StatusPill,
   Textarea,
 } from "../components/ui"
@@ -136,8 +138,24 @@ function CreateAgentForm({ onCreated }: { onCreated: () => void }) {
   )
 }
 
+function useDebounced<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs)
+    return () => clearTimeout(timer)
+  }, [value, delayMs])
+  return debounced
+}
+
 export function AgentCatalog() {
-  const { data, loading, error, refetch } = useApi(() => agentsApi.list(), [])
+  const [search, setSearch] = useState("")
+  const [status, setStatus] = useState<AgentStatus | "">("")
+  const debouncedSearch = useDebounced(search, 300)
+
+  const { data, loading, error, refetch } = useApi(
+    () => agentsApi.list({ status: status || undefined, search: debouncedSearch || undefined }),
+    [status, debouncedSearch],
+  )
 
   return (
     <div>
@@ -147,11 +165,38 @@ export function AgentCatalog() {
         action={<CreateAgentForm onCreated={refetch} />}
       />
 
+      <div className="mb-6 flex flex-wrap gap-3">
+        <div className="max-w-xs flex-1">
+          <Input
+            placeholder="Search by name…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="w-40">
+          <Select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as AgentStatus | "")}
+          >
+            <option value="">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+          </Select>
+        </div>
+      </div>
+
       {loading && <LoadingState />}
       {error && <ErrorState message={error} />}
 
       {data && data.data.length === 0 && (
-        <EmptyState message="No agents yet. Create one above to get started." />
+        <EmptyState
+          message={
+            search || status
+              ? "No agents match your filters."
+              : "No agents yet. Create one above to get started."
+          }
+        />
       )}
 
       {data && data.data.length > 0 && (

@@ -20,6 +20,8 @@ function ApiKeys() {
   const [creating, setCreating] = useState(false)
   const [newKey, setNewKey] = useState<string | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,6 +37,20 @@ function ApiKeys() {
       setCreateError(err instanceof Error ? err.message : String(err))
     } finally {
       setCreating(false)
+    }
+  }
+
+  const revoke = async (id: string, label: string) => {
+    if (!confirm(`Revoke the API key for "${label}"? This cannot be undone.`)) return
+    setDeletingId(id)
+    setDeleteError(null)
+    try {
+      await apiKeysApi.delete(id)
+      refetch()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -68,6 +84,12 @@ function ApiKeys() {
         </div>
       )}
 
+      {deleteError && (
+        <div className="mb-4">
+          <ErrorState message={deleteError} />
+        </div>
+      )}
+
       {loading && <LoadingState />}
       {error && <ErrorState message={error} />}
       {data && data.data.length === 0 && <EmptyState message="No API keys minted yet." />}
@@ -82,6 +104,14 @@ function ApiKeys() {
               <div className="flex items-center gap-3">
                 <span className="label text-deck-500">{k.provider}</span>
                 <span className="label text-deck-600">{formatDateTime(k.created_at)}</span>
+                <Button
+                  variant="danger"
+                  className="!px-2 !py-1 !text-[11px]"
+                  disabled={deletingId === k.id}
+                  onClick={() => revoke(k.id, k.user_id)}
+                >
+                  {deletingId === k.id ? "Revoking…" : "Revoke"}
+                </Button>
               </div>
             </div>
           ))}

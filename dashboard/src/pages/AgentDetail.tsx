@@ -254,6 +254,8 @@ export function AgentDetail() {
   const { agentId } = useParams<{ agentId: string }>()
   const navigate = useNavigate()
   const [refreshKey, setRefreshKey] = useState(0)
+  const [cloning, setCloning] = useState(false)
+  const [cloneError, setCloneError] = useState<string | null>(null)
   const { data, loading, error, refetch } = useApi(
     () => agentsApi.get(agentId!),
     [agentId, refreshKey],
@@ -263,6 +265,19 @@ export function AgentDetail() {
     if (!agentId || !confirm("Delete this agent? This cannot be undone.")) return
     await agentsApi.delete(agentId)
     navigate("/agents")
+  }
+
+  const handleClone = async () => {
+    if (!agentId) return
+    setCloning(true)
+    setCloneError(null)
+    try {
+      const cloned = await agentsApi.clone(agentId)
+      navigate(`/agents/${cloned.data.id}`)
+    } catch (err) {
+      setCloneError(err instanceof Error ? err.message : String(err))
+      setCloning(false)
+    }
   }
 
   if (loading) return <LoadingState />
@@ -279,12 +294,21 @@ export function AgentDetail() {
         action={
           <div className="flex items-center gap-3">
             <StatusPill status={agent.status} />
+            <Button variant="ghost" onClick={handleClone} disabled={cloning}>
+              {cloning ? "Cloning…" : "Clone"}
+            </Button>
             <Button variant="danger" onClick={handleDelete}>
               Delete
             </Button>
           </div>
         }
       />
+
+      {cloneError && (
+        <div className="mb-6">
+          <ErrorState message={cloneError} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

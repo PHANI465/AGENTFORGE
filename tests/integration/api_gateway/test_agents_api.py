@@ -121,3 +121,110 @@ async def test_delete_agent(client, api_key):
 
     get_resp = await client.get(f"/api/v1/agents/{agent_id}", headers=headers)
     assert get_resp.status_code == 404
+
+
+async def test_clone_agent_copies_config_with_new_id(client, api_key):
+    headers = {"X-API-Key": api_key}
+    create_resp = await client.post("/api/v1/agents", json=_agent_payload(), headers=headers)
+    source = create_resp.json()["data"]
+
+    clone_resp = await client.post(f"/api/v1/agents/{source['id']}/clone", headers=headers)
+    assert clone_resp.status_code == 201
+    cloned = clone_resp.json()["data"]
+
+    assert cloned["id"] != source["id"]
+    assert cloned["name"] == f"{source['name']} (copy)"
+    assert cloned["model"] == source["model"]
+    assert cloned["system_prompt"] == source["system_prompt"]
+    assert cloned["tools"][0]["name"] == source["tools"][0]["name"]
+
+
+async def test_clone_agent_with_custom_name(client, api_key):
+    headers = {"X-API-Key": api_key}
+    create_resp = await client.post("/api/v1/agents", json=_agent_payload(), headers=headers)
+    source_id = create_resp.json()["data"]["id"]
+
+    clone_resp = await client.post(
+        f"/api/v1/agents/{source_id}/clone",
+        json={"name": "staging-copy"},
+        headers=headers,
+    )
+    assert clone_resp.status_code == 201
+    assert clone_resp.json()["data"]["name"] == "staging-copy"
+
+
+async def test_clone_nonexistent_agent_returns_404(client, api_key):
+    headers = {"X-API-Key": api_key}
+    response = await client.post(
+        "/api/v1/agents/00000000-0000-0000-0000-000000000000/clone", headers=headers
+    )
+    assert response.status_code == 404
+
+
+async def test_clone_starts_at_version_one(client, api_key):
+    headers = {"X-API-Key": api_key}
+    create_resp = await client.post("/api/v1/agents", json=_agent_payload(), headers=headers)
+    source_id = create_resp.json()["data"]["id"]
+
+    # Update the source so it accrues a second version — the clone should
+    # not inherit this history.
+    await client.put(
+        f"/api/v1/agents/{source_id}", json={"status": "active"}, headers=headers
+    )
+
+    clone_resp = await client.post(f"/api/v1/agents/{source_id}/clone", headers=headers)
+    cloned_id = clone_resp.json()["data"]["id"]
+
+    versions_resp = await client.get(f"/api/v1/agents/{cloned_id}/versions", headers=headers)
+    versions = versions_resp.json()["data"]
+    assert len(versions) == 1
+    assert versions[0]["version"] == 1
+
+
+async def test_list_agents_filters_by_status(client, api_key):
+    headers = {"X-API-Key": api_key}
+    active_resp = await client.post(
+        "/api/v1/agents", json=_agent_payload(name="active-agent"), headers=headers
+    )
+    await client.put(
+        f"/api/v1/agents/{active_resp.json()['data']['id']}",
+        json={"status": "active"},
+        headers=headers,
+    )
+    await client.post("/api/v1/agents", json=_agent_payload(name="draft-agent"), headers=headers)
+
+    resp = await client.get("/api/v1/agents", params={"status": "active"}, headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert all(a["status"] == "active" for a in body["data"])
+    assert any(a["name"] == "active-agent" for a in body["data"])
+    assert not any(a["name"] == "draft-agent" for a in body["data"])
+
+
+async def test_list_agents_search_is_case_insensitive_substring_match(client, api_key):
+    headers = {"X-API-Key": api_key}
+    await client.post(
+        "/api/v1/agents", json=_agent_payload(name="Customer-Support-Bot"), headers=headers
+    )
+    await client.post("/api/v1/agents", json=_agent_payload(name="billing-agent"), headers=headers)
+
+    resp = await client.get("/api/v1/agents", params={"search": "support"}, headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    names = [a["name"] for a in body["data"]]
+    assert "Customer-Support-Bot" in names
+    assert "billing-agent" not in names
+
+
+async def test_list_agents_reports_total_count_in_meta(client, api_key):
+    headers = {"X-API-Key": api_key}
+    for i in range(3):
+        await client.post(
+            "/api/v1/agents", json=_agent_payload(name=f"count-agent-{i}"), headers=headers
+        )
+
+    resp = await client.get(
+        "/api/v1/agents", params={"limit": 1, "search": "count-agent"}, headers=headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["meta"]["total"] == 3

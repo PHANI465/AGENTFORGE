@@ -39,7 +39,9 @@ class AgentORM(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
-    versions: Mapped[list["AgentVersionORM"]] = relationship(back_populates="agent")
+    versions: Mapped[list["AgentVersionORM"]] = relationship(
+        back_populates="agent", passive_deletes=True
+    )
 
 
 class AgentVersionORM(Base):
