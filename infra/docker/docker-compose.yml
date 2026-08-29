@@ -38,6 +38,7 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - AGENT_RUNTIME_URL=http://agent-runtime:8001
       - EVAL_SERVICE_URL=http://eval-service:8002
+      - AUTH_SERVICE_URL=http://auth-service:8004
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY:-}
       - DASHBOARD_ORIGINS=${DASHBOARD_ORIGINS:-http://localhost:3001,http://localhost:5173}
@@ -129,6 +130,14 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - OAUTH_REDIRECT_BASE_URL=${OAUTH_REDIRECT_BASE_URL:-http://localhost:8004}
       - DASHBOARD_URL=${DASHBOARD_API_BASE_URL:-http://localhost:3001}
+    healthcheck:
+      # Alpine's busybox ships wget out of the box — no separate curl/wget
+      # package needed, unlike the Python services' urllib-based checks.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
         condition: service_healthy
@@ -177,8 +186,11 @@ services:
       - "3001:5173"
     environment:
       - VITE_API_BASE_URL=${DASHBOARD_API_BASE_URL:-http://localhost:8000}
+      - VITE_AUTH_SERVICE_URL=${DASHBOARD_AUTH_SERVICE_URL:-http://localhost:8004}
     depends_on:
       api-gateway:
+        condition: service_healthy
+      auth-service:
         condition: service_healthy
 
 volumes:

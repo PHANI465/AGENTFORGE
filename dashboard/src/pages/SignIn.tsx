@@ -1,8 +1,75 @@
 import { useState } from "react"
+import { Link } from "react-router-dom"
 import { useAuth } from "../lib/auth"
-import { Button, Card, Input } from "../components/ui"
+import { identityApi } from "../api/client"
+import { Button, Card, ErrorState, Field, Input } from "../components/ui"
 
-export function SignIn() {
+function OAuthButtons() {
+  return (
+    <div className="space-y-2">
+      <a href={identityApi.oauthLoginUrl("github")} className="block">
+        <Button type="button" variant="ghost" className="w-full">
+          Continue with GitHub
+        </Button>
+      </a>
+      <a href={identityApi.oauthLoginUrl("google")} className="block">
+        <Button type="button" variant="ghost" className="w-full">
+          Continue with Google
+        </Button>
+      </a>
+    </div>
+  )
+}
+
+function EmailPasswordForm() {
+  const { signIn } = useAuth()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitting(true)
+    setError(null)
+    try {
+      const apiKey = await identityApi.login(email.trim(), password)
+      signIn(apiKey)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <Field label="Email">
+        <Input
+          type="email"
+          autoFocus
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+      </Field>
+      <Field label="Password">
+        <Input
+          type="password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </Field>
+      {error && <ErrorState message={error} />}
+      <Button type="submit" className="w-full" disabled={submitting || !email.trim() || !password}>
+        {submitting ? "Signing in…" : "Sign in"}
+      </Button>
+    </form>
+  )
+}
+
+function RawKeyForm() {
   const { signIn } = useAuth()
   const [key, setKey] = useState("")
 
@@ -10,6 +77,26 @@ export function SignIn() {
     e.preventDefault()
     if (key.trim()) signIn(key.trim())
   }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <Field label="X-API-Key">
+        <Input
+          type="password"
+          placeholder="afk_…"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+        />
+      </Field>
+      <Button type="submit" variant="ghost" className="w-full" disabled={!key.trim()}>
+        Enter with a raw key
+      </Button>
+    </form>
+  )
+}
+
+export function SignIn() {
+  const [showRawKey, setShowRawKey] = useState(false)
 
   return (
     <div className="flex min-h-screen items-center justify-center px-6">
@@ -22,29 +109,43 @@ export function SignIn() {
           <p className="label mt-2 text-deck-400">authenticate to enter the deck</p>
         </div>
 
-        <Card>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <span className="label mb-1.5 block text-deck-300">X-API-Key</span>
-              <Input
-                type="password"
-                autoFocus
-                placeholder="afk_…"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={!key.trim()}>
-              Enter
-            </Button>
-          </form>
+        <Card className="space-y-5">
+          <OAuthButtons />
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-deck-700" />
+            <span className="label text-deck-500">or</span>
+            <div className="h-px flex-1 bg-deck-700" />
+          </div>
+          <EmailPasswordForm />
         </Card>
 
         <p className="label mt-4 text-center !text-[10px] text-deck-500">
-          no key yet? run{" "}
-          <code className="font-mono text-deck-300">uv run python scripts/seed.py</code> from
-          the repo root
+          no account yet?{" "}
+          <Link to="/signup" className="text-signal hover:underline">
+            sign up
+          </Link>
         </p>
+
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={() => setShowRawKey((v) => !v)}
+            className="label !text-[10px] text-deck-600 hover:text-deck-400"
+          >
+            {showRawKey ? "hide" : "have a raw API key instead?"}
+          </button>
+        </div>
+
+        {showRawKey && (
+          <Card className="mt-3">
+            <RawKeyForm />
+            <p className="label mt-3 !text-[10px] text-deck-500">
+              run{" "}
+              <code className="font-mono text-deck-300">uv run python scripts/seed.py</code> from
+              the repo root to mint a dev key
+            </p>
+          </Card>
+        )}
       </div>
     </div>
   )

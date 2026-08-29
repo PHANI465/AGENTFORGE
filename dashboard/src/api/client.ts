@@ -18,6 +18,7 @@ import type {
 } from "./types"
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
+const AUTH_SERVICE_URL = import.meta.env.VITE_AUTH_SERVICE_URL ?? "http://localhost:8004"
 const STORAGE_KEY = "agentforge.api_key"
 
 export class ApiError extends Error {
@@ -159,4 +160,73 @@ export const apiKeysApi = {
     }),
   delete: (id: string) =>
     request<void>(`/api/v1/api-keys/${id}`, { method: "DELETE" }),
+}
+
+// --- Identity (services/auth-service — Phase 3.3) ---
+//
+// Two-step login: auth-service proves who you are and hands back a JWT;
+// that JWT is then exchanged for a real AgentForge API key via
+// api-gateway's bootstrap endpoint (POST /api/v1/api-keys/bootstrap),
+// which is what actually gets stored and used for every other request.
+// Every other page in this app only ever sees the API key — this is the
+// only file that touches a JWT at all, and only transiently, in memory.
+
+interface AuthTokens {
+  access_token: string
+  refresh_token: string
+}
+
+/** Same envelope-parsing/error-throwing shape as the main request()
+ * helper above, but for the two auth calls that don't go through
+ * api-gateway with an X-API-Key — auth-service itself, and the
+ * bootstrap call's Bearer-token auth. */
+async function rawEnvelopeFetch<T>(url: string, init: RequestInit): Promise<T> {
+  const res = await fetch(url, init)
+  const parsed = await res.json().catch(() => null)
+  if (!res.ok) {
+    const errBody = parsed as ApiErrorBody | null
+    throw new ApiError(
+      res.status,
+      errBody?.error?.code ?? "unknown_error",
+      errBody?.error?.message ?? `Request failed with status ${res.status}`,
+    )
+  }
+  return (parsed as { data: T }).data
+}
+
+async function bootstrapApiKeyFromToken(accessToken: string): Promise<string> {
+  const created = await rawEnvelopeFetch<ApiKeyCreated>(`${BASE_URL}/api/v1/api-keys/bootstrap`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  return created.raw_key
+}
+
+export const identityApi = {
+  /** Email+password signup, then immediately exchanges the resulting JWT
+   * for a real API key. Returns the API key — callers still call
+   * setApiKey() themselves, same as every other sign-in path, so there's
+   * one single place that decides what "signed in" means. */
+  signup: async (email: string, password: string): Promise<string> => {
+    const tokens = await rawEnvelopeFetch<AuthTokens>(`${AUTH_SERVICE_URL}/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    })
+    return bootstrapApiKeyFromToken(tokens.access_token)
+  },
+  login: async (email: string, password: string): Promise<string> => {
+    const tokens = await rawEnvelopeFetch<AuthTokens>(`${AUTH_SERVICE_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    })
+    return bootstrapApiKeyFromToken(tokens.access_token)
+  },
+  /** Used by the /auth/callback page after an OAuth provider redirects
+   * back with tokens already in hand (in the URL fragment, not a fetch
+   * response) — same bootstrap step, just a different way of getting the
+   * initial access token. */
+  bootstrapFromAccessToken: bootstrapApiKeyFromToken,
+  oauthLoginUrl: (provider: "github" | "google") => `${AUTH_SERVICE_URL}/auth/oauth/${provider}/login`,
 }

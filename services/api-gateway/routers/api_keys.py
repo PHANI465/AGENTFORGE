@@ -12,11 +12,12 @@ import uuid
 from datetime import datetime
 
 from agentforge_common.envelope import DataResponse, ListMeta, ListResponse
-from agentforge_common.exceptions import ConflictError, NotFoundError
-from agentforge_common.orm import ApiKeyORM
+from agentforge_common.exceptions import ConflictError, NotFoundError, UnauthorizedError
+from agentforge_common.orm import ApiKeyORM, UserORM
 from agentforge_common.security import encrypt_key, generate_api_key, hash_api_key
 from dependencies import get_db, owner_id_of, require_api_key
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Header, status
+from jwt_auth import verify_session_jwt
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,6 +64,57 @@ async def create_api_key(
         owner_id=owner_id_of(auth),
         provider=payload.provider,
         encrypted_key=encrypt_key(payload.llm_api_key),
+    )
+    session.add(orm)
+    await session.flush()
+    await session.refresh(orm)
+
+    return DataResponse(data=ApiKeyCreated(
+        id=orm.id, user_id=orm.user_id, provider=orm.provider,
+        created_at=orm.created_at, raw_key=raw_key,
+    ))
+
+
+@router.post(
+    "/bootstrap",
+    response_model=DataResponse[ApiKeyCreated],
+    status_code=status.HTTP_201_CREATED,
+    summary="Mint an API key for a freshly authenticated dashboard session",
+    operation_id="bootstrapApiKey",
+)
+async def bootstrap_api_key(
+    session: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(default=None),
+) -> DataResponse[ApiKeyCreated]:
+    """Bridges auth-service's identity (a JWT, from signup/login/OAuth) to
+    AgentForge's normal bearer-API-key model. A brand-new user has proven
+    who they are but has no API key yet — every other endpoint, including
+    the plain POST above, requires one already. Called once per
+    browser/device right after login; mints a fresh key every time it's
+    called (raw keys are never stored, so a repeat call can't just return
+    the same one — that matches "a new device gets its own session key").
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise UnauthorizedError("Missing Bearer token")
+    claims = await verify_session_jwt(authorization.removeprefix("Bearer "))
+
+    owner_id = uuid.UUID(claims["sub"])
+    # The FK on api_keys.owner_id would catch this too, but that surfaces
+    # as an unhandled IntegrityError (a 500) rather than a clean
+    # UnauthorizedError — checked explicitly so a stale/forged/deleted-user
+    # token fails cleanly instead of crashing the request.
+    user = await session.get(UserORM, owner_id)
+    if user is None:
+        raise UnauthorizedError("Token does not correspond to a known account")
+
+    raw_key = generate_api_key()
+    orm = ApiKeyORM(
+        id=uuid.uuid4(),
+        key_hash=hash_api_key(raw_key),
+        user_id=claims.get("email", claims["sub"]),
+        owner_id=owner_id,
+        provider="openai",
+        encrypted_key=encrypt_key(""),
     )
     session.add(orm)
     await session.flush()

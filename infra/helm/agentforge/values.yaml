@@ -65,6 +65,7 @@ services:
     env:
       AGENT_RUNTIME_URL: http://agent-runtime:8001
       EVAL_SERVICE_URL: http://eval-service:8002
+      AUTH_SERVICE_URL: http://auth-service:8004
     secretEnv: [POSTGRES_DSN, REDIS_URL, OPENAI_API_KEY, ENCRYPTION_MASTER_KEY]
 
   agent-runtime:
