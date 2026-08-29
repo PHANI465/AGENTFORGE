@@ -23,7 +23,7 @@ if str(API_GATEWAY_DIR) not in sys.path:
 
 from agentforge_common import orm  # noqa: E402,F401  registers tables on Base.metadata
 from agentforge_common.db import Base  # noqa: E402
-from agentforge_common.orm import ApiKeyORM  # noqa: E402
+from agentforge_common.orm import SYSTEM_USER_ID, ApiKeyORM, UserORM  # noqa: E402
 from agentforge_common.security import encrypt_key, generate_api_key, hash_api_key  # noqa: E402
 
 ADMIN_DSN = "postgresql+asyncpg://agentforge:agentforge@localhost:5432/postgres"
@@ -54,6 +54,16 @@ async def test_engine():
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
+    # Migration 0003 inserts this row for real deployments; tests bypass
+    # Alembic entirely (see module docstring), so it has to be seeded here
+    # instead. Every owner_id column FKs to users.id, and owner_id_of()
+    # falls back to this id for any key with no real owner — without this
+    # row, every write in every test would fail its FK constraint.
+    seed_session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with seed_session_factory() as seed_session:
+        seed_session.add(UserORM(id=SYSTEM_USER_ID, email="system@agentforge.local"))
+        await seed_session.commit()
+
     yield engine
 
     await engine.dispose()
@@ -64,8 +74,11 @@ async def session(test_engine):
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
     async with session_factory() as db_session:
         yield db_session
+        # `users` is deliberately excluded: the system user seeded above
+        # must survive for the whole test session, not just one test.
         for table in reversed(Base.metadata.sorted_tables):
-            await db_session.execute(table.delete())
+            if table.name != "users":
+                await db_session.execute(table.delete())
         await db_session.commit()
 
 
@@ -77,8 +90,31 @@ async def api_key(session) -> str:
             id=uuid.uuid4(),
             key_hash=hash_api_key(raw_key),
             user_id="test-user",
+            owner_id=SYSTEM_USER_ID,
             provider="openai",
             encrypted_key=encrypt_key("sk-test-dummy-key-for-integration-tests"),
+        )
+    )
+    await session.commit()
+    return raw_key
+
+
+@pytest.fixture
+async def second_api_key(session) -> str:
+    """A key owned by a distinct, real (non-system) user — for tenant-isolation tests."""
+    user_id = uuid.uuid4()
+    session.add(UserORM(id=user_id, email=f"{user_id}@agentforge.local"))
+    await session.flush()
+
+    raw_key = generate_api_key()
+    session.add(
+        ApiKeyORM(
+            id=uuid.uuid4(),
+            key_hash=hash_api_key(raw_key),
+            user_id="second-test-user",
+            owner_id=user_id,
+            provider="openai",
+            encrypted_key=encrypt_key("sk-test-dummy-key-for-second-user"),
         )
     )
     await session.commit()

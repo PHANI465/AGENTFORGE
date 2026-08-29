@@ -16,22 +16,24 @@ def _step_type(raw: str) -> RunStepType:
 
 
 async def count_runs_for_agent(
-    session: AsyncSession, agent_id: uuid.UUID
+    session: AsyncSession, owner_id: uuid.UUID, agent_id: uuid.UUID
 ) -> int:
     result = await session.execute(
-        select(func.count()).select_from(RunORM).where(RunORM.agent_id == agent_id)
+        select(func.count())
+        .select_from(RunORM)
+        .where(RunORM.agent_id == agent_id, RunORM.owner_id == owner_id)
     )
     return result.scalar_one()
 
 
 async def list_runs_for_agent(
-    session: AsyncSession, agent_id: uuid.UUID, limit: int = 20
+    session: AsyncSession, owner_id: uuid.UUID, agent_id: uuid.UUID, limit: int = 20
 ) -> list[Run]:
     """Most recent runs for an agent, newest first. Runs that never started
     (e.g. crashed before completion) sort last since started_at is null."""
     result = await session.execute(
         select(RunORM)
-        .where(RunORM.agent_id == agent_id)
+        .where(RunORM.agent_id == agent_id, RunORM.owner_id == owner_id)
         .order_by(desc(RunORM.started_at).nulls_last())
         .limit(limit)
     )
@@ -46,12 +48,15 @@ async def list_runs_for_agent(
     ]
 
 
-async def get_agent_spend_today(session: AsyncSession, agent_id: uuid.UUID) -> float:
+async def get_agent_spend_today(
+    session: AsyncSession, owner_id: uuid.UUID, agent_id: uuid.UUID
+) -> float:
     """Sum of CostRecord.cost_usd for this agent since midnight UTC."""
     start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     result = await session.execute(
         select(func.coalesce(func.sum(CostRecordORM.cost_usd), 0)).where(
             CostRecordORM.agent_id == agent_id,
+            CostRecordORM.owner_id == owner_id,
             CostRecordORM.created_at >= start_of_day,
         )
     )
@@ -60,6 +65,7 @@ async def get_agent_spend_today(session: AsyncSession, agent_id: uuid.UUID) -> f
 
 async def create_run(
     session: AsyncSession,
+    owner_id: uuid.UUID,
     agent_id: uuid.UUID,
     agent_version: int,
     user_input: str,
@@ -67,6 +73,7 @@ async def create_run(
     """Create a pending Run row."""
     orm = RunORM(
         id=uuid.uuid4(),
+        owner_id=owner_id,
         agent_id=agent_id,
         agent_version=agent_version,
         input=user_input,
@@ -130,6 +137,7 @@ async def complete_run(
     if total_tokens_in or total_tokens_out:
         session.add(CostRecordORM(
             id=uuid.uuid4(),
+            owner_id=run_orm.owner_id,
             agent_id=run_orm.agent_id,
             run_id=run_orm.id,
             model=model,

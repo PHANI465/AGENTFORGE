@@ -9,7 +9,7 @@ from agentforge_common.enums import AgentStatus
 from agentforge_common.envelope import DataResponse, ListMeta, ListResponse
 from agentforge_common.models import Agent, AgentCreate, AgentUpdate
 from agentforge_common.orm import ApiKeyORM
-from dependencies import get_db, require_api_key
+from dependencies import get_db, owner_id_of, require_api_key
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,9 +27,9 @@ router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 async def create_agent(
     payload: AgentCreate,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[Agent]:
-    agent = await crud_agents.create_agent(session, payload)
+    agent = await crud_agents.create_agent(session, owner_id_of(auth), payload)
     return DataResponse(data=agent)
 
 
@@ -49,13 +49,14 @@ async def list_agents(
         default=None, max_length=200, description="Case-insensitive name search",
     ),
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> ListResponse[Agent]:
+    owner_id = owner_id_of(auth)
     sf = status_filter.value if status_filter else None
     agents, next_cursor = await crud_agents.list_agents(
-        session, limit, cursor, status_filter=sf, search=search,
+        session, owner_id, limit, cursor, status_filter=sf, search=search,
     )
-    total = await crud_agents.count_agents(session, status_filter=sf, search=search)
+    total = await crud_agents.count_agents(session, owner_id, status_filter=sf, search=search)
     return ListResponse(
         data=agents,
         meta=ListMeta(total=total, next_cursor=next_cursor, limit=limit),
@@ -71,9 +72,9 @@ async def list_agents(
 async def get_agent(
     agent_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[Agent]:
-    agent = await crud_agents.get_agent(session, agent_id)
+    agent = await crud_agents.get_agent(session, owner_id_of(auth), agent_id)
     return DataResponse(data=agent)
 
 
@@ -87,9 +88,9 @@ async def update_agent(
     agent_id: uuid.UUID,
     payload: AgentUpdate,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[Agent]:
-    agent = await crud_agents.update_agent(session, agent_id, payload)
+    agent = await crud_agents.update_agent(session, owner_id_of(auth), agent_id, payload)
     return DataResponse(data=agent)
 
 
@@ -114,9 +115,9 @@ class RollbackRequest(BaseModel):
 async def list_agent_versions(
     agent_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> ListResponse[AgentVersionOut]:
-    versions = await crud_agents.list_versions(session, agent_id)
+    versions = await crud_agents.list_versions(session, owner_id_of(auth), agent_id)
     data = [
         AgentVersionOut(
             id=v.id, agent_id=v.agent_id, version=v.version,
@@ -137,9 +138,9 @@ async def rollback_agent(
     agent_id: uuid.UUID,
     payload: RollbackRequest,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[Agent]:
-    agent = await crud_agents.rollback_agent(session, agent_id, payload.version)
+    agent = await crud_agents.rollback_agent(session, owner_id_of(auth), agent_id, payload.version)
     return DataResponse(data=agent)
 
 
@@ -158,10 +159,10 @@ async def clone_agent(
     agent_id: uuid.UUID,
     payload: CloneRequest | None = None,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[Agent]:
     new_name = payload.name if payload else None
-    agent = await crud_agents.clone_agent(session, agent_id, new_name)
+    agent = await crud_agents.clone_agent(session, owner_id_of(auth), agent_id, new_name)
     return DataResponse(data=agent)
 
 
@@ -174,6 +175,6 @@ async def clone_agent(
 async def delete_agent(
     agent_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> None:
-    await crud_agents.delete_agent(session, agent_id)
+    await crud_agents.delete_agent(session, owner_id_of(auth), agent_id)

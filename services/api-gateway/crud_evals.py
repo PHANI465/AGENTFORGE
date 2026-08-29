@@ -33,9 +33,12 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
     return datetime.fromisoformat(payload["created_at"]), uuid.UUID(payload["id"])
 
 
-async def create_eval_suite(session: AsyncSession, payload: EvalSuiteCreate) -> EvalSuite:
+async def create_eval_suite(
+    session: AsyncSession, owner_id: uuid.UUID, payload: EvalSuiteCreate
+) -> EvalSuite:
     orm = EvalSuiteORM(
         id=uuid.uuid4(),
+        owner_id=owner_id,
         name=payload.name,
         agent_id=payload.agent_id,
         test_cases=[tc.model_dump() for tc in payload.test_cases],
@@ -47,10 +50,11 @@ async def create_eval_suite(session: AsyncSession, payload: EvalSuiteCreate) -> 
 
 
 async def list_eval_suites(
-    session: AsyncSession, limit: int, cursor: str | None
+    session: AsyncSession, owner_id: uuid.UUID, limit: int, cursor: str | None
 ) -> tuple[list[EvalSuite], str | None]:
     stmt = (
         select(EvalSuiteORM)
+        .where(EvalSuiteORM.owner_id == owner_id)
         .order_by(EvalSuiteORM.created_at.asc(), EvalSuiteORM.id.asc())
         .limit(limit + 1)
     )
@@ -72,12 +76,21 @@ async def list_eval_suites(
     return [_orm_to_model(row) for row in rows], next_cursor
 
 
-async def get_eval_suite_orm(session: AsyncSession, suite_id: uuid.UUID) -> EvalSuiteORM:
-    orm = await session.get(EvalSuiteORM, suite_id)
+async def get_eval_suite_orm(
+    session: AsyncSession, owner_id: uuid.UUID, suite_id: uuid.UUID
+) -> EvalSuiteORM:
+    result = await session.execute(
+        select(EvalSuiteORM).where(
+            EvalSuiteORM.id == suite_id, EvalSuiteORM.owner_id == owner_id
+        )
+    )
+    orm = result.scalar_one_or_none()
     if orm is None:
         raise NotFoundError("eval_suite", str(suite_id))
     return orm
 
 
-async def get_eval_suite(session: AsyncSession, suite_id: uuid.UUID) -> EvalSuite:
-    return _orm_to_model(await get_eval_suite_orm(session, suite_id))
+async def get_eval_suite(
+    session: AsyncSession, owner_id: uuid.UUID, suite_id: uuid.UUID
+) -> EvalSuite:
+    return _orm_to_model(await get_eval_suite_orm(session, owner_id, suite_id))

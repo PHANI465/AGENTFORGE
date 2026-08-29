@@ -6,7 +6,7 @@ from typing import Any
 
 from agentforge_common.enums import EvalRunStatus
 from agentforge_common.exceptions import NotFoundError
-from agentforge_common.orm import EvalResultORM, EvalRunORM
+from agentforge_common.orm import EvalResultORM, EvalRunORM, EvalSuiteORM
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,14 +68,23 @@ async def complete_eval_run(
     return eval_run_orm
 
 
-async def get_eval_run_orm(session: AsyncSession, eval_run_id: uuid.UUID) -> EvalRunORM:
-    orm = await session.get(EvalRunORM, eval_run_id)
+async def get_eval_run_orm(
+    session: AsyncSession, owner_id: uuid.UUID, eval_run_id: uuid.UUID
+) -> EvalRunORM:
+    """EvalRunORM has no owner_id of its own — scoped transitively via its suite."""
+    result = await session.execute(
+        select(EvalRunORM)
+        .join(EvalSuiteORM, EvalRunORM.suite_id == EvalSuiteORM.id)
+        .where(EvalRunORM.id == eval_run_id, EvalSuiteORM.owner_id == owner_id)
+    )
+    orm = result.scalar_one_or_none()
     if orm is None:
         raise NotFoundError("eval_run", str(eval_run_id))
     return orm
 
 
 async def get_eval_results(session: AsyncSession, eval_run_id: uuid.UUID) -> list[EvalResultORM]:
+    """Caller must have already validated ownership of eval_run_id via get_eval_run_orm."""
     result = await session.execute(
         select(EvalResultORM).where(EvalResultORM.eval_run_id == eval_run_id)
     )
@@ -83,11 +92,12 @@ async def get_eval_results(session: AsyncSession, eval_run_id: uuid.UUID) -> lis
 
 
 async def list_eval_runs_for_suite(
-    session: AsyncSession, suite_id: uuid.UUID, limit: int = 20
+    session: AsyncSession, owner_id: uuid.UUID, suite_id: uuid.UUID, limit: int = 20
 ) -> list[EvalRunORM]:
     result = await session.execute(
         select(EvalRunORM)
-        .where(EvalRunORM.suite_id == suite_id)
+        .join(EvalSuiteORM, EvalRunORM.suite_id == EvalSuiteORM.id)
+        .where(EvalRunORM.suite_id == suite_id, EvalSuiteORM.owner_id == owner_id)
         .order_by(desc(EvalRunORM.started_at).nulls_last())
         .limit(limit)
     )

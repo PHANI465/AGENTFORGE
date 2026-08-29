@@ -17,6 +17,7 @@ from agentforge_common.enums import (
     RunStepType,
 )
 from agentforge_common.orm import (
+    SYSTEM_USER_ID,
     AgentORM,
     ApiKeyORM,
     CostRecordORM,
@@ -33,6 +34,7 @@ async def seed() -> None:
     async with async_session_factory() as session:
         agent = AgentORM(
             id=uuid.uuid4(),
+            owner_id=SYSTEM_USER_ID,
             name="demo-support-agent",
             model="gpt-4o-mini",
             system_prompt="You are a helpful customer support agent for AgentForge.",
@@ -65,6 +67,7 @@ async def seed() -> None:
 
         run = RunORM(
             id=uuid.uuid4(),
+            owner_id=SYSTEM_USER_ID,
             agent_id=agent.id,
             agent_version=1,
             input="What's the weather in San Francisco?",
@@ -115,6 +118,7 @@ async def seed() -> None:
         session.add(
             CostRecordORM(
                 id=uuid.uuid4(),
+                owner_id=SYSTEM_USER_ID,
                 agent_id=agent.id,
                 run_id=run.id,
                 model="gpt-4o-mini",
@@ -126,6 +130,7 @@ async def seed() -> None:
 
         eval_suite = EvalSuiteORM(
             id=uuid.uuid4(),
+            owner_id=SYSTEM_USER_ID,
             name="support-agent-smoke-suite",
             agent_id=agent.id,
             test_cases=[
@@ -193,6 +198,7 @@ async def seed() -> None:
                 id=uuid.uuid4(),
                 key_hash=hash_api_key(dev_raw_key),
                 user_id="dev-user",
+                owner_id=SYSTEM_USER_ID,
                 provider="openai",
                 encrypted_key=encrypt_key(os.environ.get("OPENAI_API_KEY", "")),
             )

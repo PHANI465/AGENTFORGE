@@ -1,4 +1,10 @@
-"""Agent CRUD operations against Postgres — cursor pagination, no execution logic here."""
+"""Agent CRUD operations against Postgres — cursor pagination, no execution logic here.
+
+Every query here is scoped by `owner_id`: a caller can only see/modify agents
+they own. An agent that exists but belongs to someone else raises the same
+NotFoundError as one that doesn't exist at all — that's deliberate, so a
+caller can't distinguish "not found" from "not yours" by probing IDs.
+"""
 
 import base64
 import json
@@ -61,10 +67,11 @@ async def _next_version(session: AsyncSession, agent_id: uuid.UUID) -> int:
 
 async def count_agents(
     session: AsyncSession,
+    owner_id: uuid.UUID,
     status_filter: str | None = None,
     search: str | None = None,
 ) -> int:
-    stmt = select(func.count()).select_from(AgentORM)
+    stmt = select(func.count()).select_from(AgentORM).where(AgentORM.owner_id == owner_id)
     if status_filter:
         stmt = stmt.where(AgentORM.status == status_filter)
     if search:
@@ -73,9 +80,10 @@ async def count_agents(
     return result.scalar_one()
 
 
-async def create_agent(session: AsyncSession, payload: AgentCreate) -> Agent:
+async def create_agent(session: AsyncSession, owner_id: uuid.UUID, payload: AgentCreate) -> Agent:
     orm = AgentORM(
         id=uuid.uuid4(),
+        owner_id=owner_id,
         name=payload.name,
         model=payload.model,
         system_prompt=payload.system_prompt,
@@ -97,12 +105,18 @@ async def create_agent(session: AsyncSession, payload: AgentCreate) -> Agent:
 
 async def list_agents(
     session: AsyncSession,
+    owner_id: uuid.UUID,
     limit: int,
     cursor: str | None,
     status_filter: str | None = None,
     search: str | None = None,
 ) -> tuple[list[Agent], str | None]:
-    stmt = select(AgentORM).order_by(AgentORM.created_at.asc(), AgentORM.id.asc()).limit(limit + 1)
+    stmt = (
+        select(AgentORM)
+        .where(AgentORM.owner_id == owner_id)
+        .order_by(AgentORM.created_at.asc(), AgentORM.id.asc())
+        .limit(limit + 1)
+    )
     if status_filter:
         stmt = stmt.where(AgentORM.status == status_filter)
     if search:
@@ -125,19 +139,26 @@ async def list_agents(
     return [_orm_to_model(row) for row in rows], next_cursor
 
 
-async def get_agent_orm(session: AsyncSession, agent_id: uuid.UUID) -> AgentORM:
-    orm = await session.get(AgentORM, agent_id)
+async def get_agent_orm(
+    session: AsyncSession, owner_id: uuid.UUID, agent_id: uuid.UUID
+) -> AgentORM:
+    result = await session.execute(
+        select(AgentORM).where(AgentORM.id == agent_id, AgentORM.owner_id == owner_id)
+    )
+    orm = result.scalar_one_or_none()
     if orm is None:
         raise NotFoundError("agent", str(agent_id))
     return orm
 
 
-async def get_agent(session: AsyncSession, agent_id: uuid.UUID) -> Agent:
-    return _orm_to_model(await get_agent_orm(session, agent_id))
+async def get_agent(session: AsyncSession, owner_id: uuid.UUID, agent_id: uuid.UUID) -> Agent:
+    return _orm_to_model(await get_agent_orm(session, owner_id, agent_id))
 
 
-async def update_agent(session: AsyncSession, agent_id: uuid.UUID, payload: AgentUpdate) -> Agent:
-    orm = await get_agent_orm(session, agent_id)
+async def update_agent(
+    session: AsyncSession, owner_id: uuid.UUID, agent_id: uuid.UUID, payload: AgentUpdate
+) -> Agent:
+    orm = await get_agent_orm(session, owner_id, agent_id)
 
     updates = payload.model_dump(exclude_unset=True)
     if "tools" in updates:
@@ -162,9 +183,9 @@ async def update_agent(session: AsyncSession, agent_id: uuid.UUID, payload: Agen
 
 
 async def list_versions(
-    session: AsyncSession, agent_id: uuid.UUID
+    session: AsyncSession, owner_id: uuid.UUID, agent_id: uuid.UUID
 ) -> list[AgentVersionORM]:
-    await get_agent_orm(session, agent_id)
+    await get_agent_orm(session, owner_id, agent_id)
     result = await session.execute(
         select(AgentVersionORM)
         .where(AgentVersionORM.agent_id == agent_id)
@@ -174,9 +195,9 @@ async def list_versions(
 
 
 async def rollback_agent(
-    session: AsyncSession, agent_id: uuid.UUID, target_version: int
+    session: AsyncSession, owner_id: uuid.UUID, agent_id: uuid.UUID, target_version: int
 ) -> Agent:
-    await get_agent_orm(session, agent_id)
+    await get_agent_orm(session, owner_id, agent_id)
     result = await session.execute(
         select(AgentVersionORM).where(
             AgentVersionORM.agent_id == agent_id,
@@ -188,7 +209,7 @@ async def rollback_agent(
         raise NotFoundError("agent_version", f"{agent_id}@v{target_version}")
 
     snap = version_orm.snapshot
-    orm = await get_agent_orm(session, agent_id)
+    orm = await get_agent_orm(session, owner_id, agent_id)
     orm.name = snap["name"]
     orm.model = snap["model"]
     orm.system_prompt = snap["system_prompt"]
@@ -209,11 +230,12 @@ async def rollback_agent(
 
 
 async def clone_agent(
-    session: AsyncSession, agent_id: uuid.UUID, new_name: str | None = None
+    session: AsyncSession, owner_id: uuid.UUID, agent_id: uuid.UUID, new_name: str | None = None
 ) -> Agent:
-    source = await get_agent_orm(session, agent_id)
+    source = await get_agent_orm(session, owner_id, agent_id)
     orm = AgentORM(
         id=uuid.uuid4(),
+        owner_id=owner_id,
         name=new_name or f"{source.name} (copy)",
         model=source.model,
         system_prompt=source.system_prompt,
@@ -233,7 +255,7 @@ async def clone_agent(
     return _orm_to_model(orm)
 
 
-async def delete_agent(session: AsyncSession, agent_id: uuid.UUID) -> None:
-    orm = await get_agent_orm(session, agent_id)
+async def delete_agent(session: AsyncSession, owner_id: uuid.UUID, agent_id: uuid.UUID) -> None:
+    orm = await get_agent_orm(session, owner_id, agent_id)
     await session.delete(orm)
     await session.flush()

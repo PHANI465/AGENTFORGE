@@ -16,7 +16,7 @@ from agentforge_common.exceptions import AgentForgeError, BudgetExceededError
 from agentforge_common.models import Run, RunCreate
 from agentforge_common.orm import ApiKeyORM
 from agentforge_common.security import decrypt_key
-from dependencies import get_db, require_api_key
+from dependencies import get_db, owner_id_of, require_api_key
 from fastapi import APIRouter, Depends, Query, Request
 from rate_limit import RATE_LIMIT_DEFAULT, RATE_LIMIT_RUN, limiter
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +45,8 @@ async def run_agent(
     auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[Run]:
     """Execute an agent: look up config, call runtime, persist results."""
-    agent = await crud_agents.get_agent(session, agent_id)
+    owner_id = owner_id_of(auth)
+    agent = await crud_agents.get_agent(session, owner_id, agent_id)
 
     tool_names = [t.name for t in agent.tools]
 
@@ -55,7 +56,7 @@ async def run_agent(
 
     daily_budget = agent.config.optimization.daily_budget_usd
     if daily_budget is not None:
-        spent_today = await crud_runs.get_agent_spend_today(session, agent.id)
+        spent_today = await crud_runs.get_agent_spend_today(session, owner_id, agent.id)
         if spent_today >= daily_budget:
             raise BudgetExceededError(
                 f"Daily budget of ${daily_budget:.6f} exceeded "
@@ -63,7 +64,7 @@ async def run_agent(
             )
 
     run_orm = await crud_runs.create_run(
-        session, agent_id=agent.id, agent_version=1, user_input=payload.input,
+        session, owner_id=owner_id, agent_id=agent.id, agent_version=1, user_input=payload.input,
     )
     run_orm.status = RunStatus.RUNNING
     await session.flush()
@@ -130,11 +131,12 @@ async def list_agent_runs(
     agent_id: uuid.UUID,
     limit: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> ListResponse[Run]:
     """Most recent runs for an agent, newest first."""
-    runs = await crud_runs.list_runs_for_agent(session, agent_id, limit)
-    total = await crud_runs.count_runs_for_agent(session, agent_id)
+    owner_id = owner_id_of(auth)
+    runs = await crud_runs.list_runs_for_agent(session, owner_id, agent_id, limit)
+    total = await crud_runs.count_runs_for_agent(session, owner_id, agent_id)
     return ListResponse(
         data=runs, meta=ListMeta(total=total, next_cursor=None, limit=limit),
     )

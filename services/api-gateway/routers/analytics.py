@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 
 from agentforge_common.envelope import DataResponse
 from agentforge_common.orm import ApiKeyORM, CostRecordORM
-from dependencies import get_db, require_api_key
+from dependencies import get_db, owner_id_of, require_api_key
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -49,7 +49,7 @@ async def cost_breakdown(
     agent_id: uuid.UUID | None = Query(default=None),
     days: int = Query(default=7, ge=1, le=90),
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[list[CostBreakdownRow]]:
     """Daily cost/token breakdown, optionally scoped to one agent."""
     since = datetime.now(UTC) - timedelta(days=days)
@@ -64,7 +64,7 @@ async def cost_breakdown(
             func.sum(CostRecordORM.tokens_out).label("total_tokens_out"),
             func.count().label("call_count"),
         )
-        .where(CostRecordORM.created_at >= since)
+        .where(CostRecordORM.owner_id == owner_id_of(auth), CostRecordORM.created_at >= since)
         .group_by(day_col, CostRecordORM.agent_id)
         .order_by(day_col)
     )
@@ -96,7 +96,7 @@ async def usage_summary(
     agent_id: uuid.UUID | None = Query(default=None),
     days: int = Query(default=7, ge=1, le=90),
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[UsageSummary]:
     """Aggregate token/cost/call totals over a window, optionally scoped to one agent."""
     since = datetime.now(UTC) - timedelta(days=days)
@@ -106,7 +106,7 @@ async def usage_summary(
         func.coalesce(func.sum(CostRecordORM.tokens_in), 0).label("total_tokens_in"),
         func.coalesce(func.sum(CostRecordORM.tokens_out), 0).label("total_tokens_out"),
         func.count().label("total_calls"),
-    ).where(CostRecordORM.created_at >= since)
+    ).where(CostRecordORM.owner_id == owner_id_of(auth), CostRecordORM.created_at >= since)
     if agent_id is not None:
         stmt = stmt.where(CostRecordORM.agent_id == agent_id)
 

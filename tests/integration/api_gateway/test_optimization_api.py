@@ -4,7 +4,7 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from agentforge_common.orm import CostRecordORM
+from agentforge_common.orm import SYSTEM_USER_ID, CostRecordORM
 from httpx import Response
 
 BASE = "/api/v1/agents"
@@ -70,8 +70,8 @@ async def test_run_proceeds_when_no_budget_set(client, api_key):
 async def test_run_proceeds_when_under_budget(client, api_key, session):
     agent = await _create_agent(client, api_key, daily_budget_usd=10.0)
     session.add(CostRecordORM(
-        id=uuid.uuid4(), agent_id=uuid.UUID(agent["id"]), model="gpt-4o-mini",
-        tokens_in=100, tokens_out=50, cost_usd=0.01,
+        id=uuid.uuid4(), owner_id=SYSTEM_USER_ID, agent_id=uuid.UUID(agent["id"]),
+        model="gpt-4o-mini", tokens_in=100, tokens_out=50, cost_usd=0.01,
     ))
     await session.commit()
 
@@ -87,8 +87,8 @@ async def test_run_proceeds_when_under_budget(client, api_key, session):
 async def test_run_rejected_when_budget_exceeded(client, api_key, session):
     agent = await _create_agent(client, api_key, daily_budget_usd=0.005)
     session.add(CostRecordORM(
-        id=uuid.uuid4(), agent_id=uuid.UUID(agent["id"]), model="gpt-4o-mini",
-        tokens_in=1000, tokens_out=500, cost_usd=0.01,
+        id=uuid.uuid4(), owner_id=SYSTEM_USER_ID, agent_id=uuid.UUID(agent["id"]),
+        model="gpt-4o-mini", tokens_in=1000, tokens_out=500, cost_usd=0.01,
     ))
     await session.commit()
 

@@ -22,7 +22,7 @@ from agentforge_common.exceptions import AgentForgeError
 from agentforge_common.models import EvalSuite, EvalSuiteCreate
 from agentforge_common.orm import ApiKeyORM, EvalResultORM, EvalRunORM
 from agentforge_common.security import decrypt_key
-from dependencies import get_db, require_api_key
+from dependencies import get_db, owner_id_of, require_api_key
 from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel, Field
 from rate_limit import RATE_LIMIT_RUN, limiter
@@ -101,9 +101,9 @@ def _run_orm_to_out(orm: EvalRunORM, results: list[EvalResultORM]) -> EvalRunOut
 async def create_eval_suite(
     payload: EvalSuiteCreate,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[EvalSuite]:
-    suite = await crud_evals.create_eval_suite(session, payload)
+    suite = await crud_evals.create_eval_suite(session, owner_id_of(auth), payload)
     return DataResponse(data=suite)
 
 
@@ -117,9 +117,11 @@ async def list_eval_suites(
     limit: int = Query(default=20, ge=1, le=100),
     cursor: str | None = Query(default=None),
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> ListResponse[EvalSuite]:
-    suites, next_cursor = await crud_evals.list_eval_suites(session, limit, cursor)
+    suites, next_cursor = await crud_evals.list_eval_suites(
+        session, owner_id_of(auth), limit, cursor
+    )
     return ListResponse(data=suites, meta=ListMeta(next_cursor=next_cursor, limit=limit))
 
 
@@ -132,9 +134,9 @@ async def list_eval_suites(
 async def get_eval_suite(
     suite_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[EvalSuite]:
-    suite = await crud_evals.get_eval_suite(session, suite_id)
+    suite = await crud_evals.get_eval_suite(session, owner_id_of(auth), suite_id)
     return DataResponse(data=suite)
 
 
@@ -152,8 +154,9 @@ async def run_eval_suite(
     auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[EvalRunOut]:
     """Run every test case in the suite against its agent, score each, and persist results."""
-    suite_orm = await crud_evals.get_eval_suite_orm(session, suite_id)
-    agent = await crud_agents.get_agent(session, suite_orm.agent_id)
+    owner_id = owner_id_of(auth)
+    suite_orm = await crud_evals.get_eval_suite_orm(session, owner_id, suite_id)
+    agent = await crud_agents.get_agent(session, owner_id, suite_orm.agent_id)
 
     llm_api_key = decrypt_key(auth.encrypted_key) or os.getenv("OPENAI_API_KEY", "")
     if not llm_api_key:
@@ -208,10 +211,12 @@ async def list_eval_runs(
     suite_id: uuid.UUID,
     limit: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> ListResponse[EvalRunOut]:
     """Most recent eval runs for a suite, newest first (results omitted for brevity)."""
-    runs = await crud_eval_runs.list_eval_runs_for_suite(session, suite_id, limit)
+    runs = await crud_eval_runs.list_eval_runs_for_suite(
+        session, owner_id_of(auth), suite_id, limit
+    )
     return ListResponse(
         data=[_run_orm_to_out(r, []) for r in runs],
         meta=ListMeta(next_cursor=None, limit=limit),
@@ -227,9 +232,9 @@ async def list_eval_runs(
 async def get_eval_run(
     eval_run_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[EvalRunOut]:
-    eval_run_orm = await crud_eval_runs.get_eval_run_orm(session, eval_run_id)
+    eval_run_orm = await crud_eval_runs.get_eval_run_orm(session, owner_id_of(auth), eval_run_id)
     results = await crud_eval_runs.get_eval_results(session, eval_run_id)
     return DataResponse(data=_run_orm_to_out(eval_run_orm, results))
 
@@ -244,11 +249,12 @@ async def compare_eval_runs(
     eval_run_id: uuid.UUID,
     other_run_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[EvalCompareOut]:
     """Compare two eval runs' summaries side by side (e.g. agent v1 vs v2)."""
-    run_a_orm = await crud_eval_runs.get_eval_run_orm(session, eval_run_id)
-    run_b_orm = await crud_eval_runs.get_eval_run_orm(session, other_run_id)
+    owner_id = owner_id_of(auth)
+    run_a_orm = await crud_eval_runs.get_eval_run_orm(session, owner_id, eval_run_id)
+    run_b_orm = await crud_eval_runs.get_eval_run_orm(session, owner_id, other_run_id)
     results_a = await crud_eval_runs.get_eval_results(session, eval_run_id)
     results_b = await crud_eval_runs.get_eval_results(session, other_run_id)
 

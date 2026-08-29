@@ -9,7 +9,7 @@ import uuid
 from agentforge_common.envelope import DataResponse
 from agentforge_common.exceptions import NotFoundError
 from agentforge_common.orm import ApiKeyORM, RunORM, RunStepORM
-from dependencies import get_db, require_api_key
+from dependencies import get_db, owner_id_of, require_api_key
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -58,10 +58,13 @@ class TraceResponse(BaseModel):
 async def get_run_trace(
     run_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _auth: ApiKeyORM = Depends(require_api_key),
+    auth: ApiKeyORM = Depends(require_api_key),
 ) -> DataResponse[TraceResponse]:
     """Return a structured trace for a run, built from its RunStep records."""
-    run = await session.get(RunORM, run_id)
+    result = await session.execute(
+        select(RunORM).where(RunORM.id == run_id, RunORM.owner_id == owner_id_of(auth))
+    )
+    run = result.scalar_one_or_none()
     if not run:
         raise NotFoundError("Run", str(run_id))
 

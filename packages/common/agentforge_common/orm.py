@@ -23,10 +23,29 @@ def _str_enum(enum_cls: type, name: str) -> SAEnum:
     return SAEnum(enum_cls, name=name, values_callable=lambda cls: [e.value for e in cls])
 
 
+# Fixed id of the system/demo user that pre-tenancy data (and any API key
+# never explicitly claimed by a real account) is scoped to. Must match
+# alembic/versions/0003_add_tenancy.py's SYSTEM_USER_ID exactly.
+SYSTEM_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+
+class UserORM(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    email: Mapped[str] = mapped_column(unique=True, index=True)
+    password_hash: Mapped[str | None] = mapped_column(default=None)
+    oauth_provider: Mapped[str | None] = mapped_column(default=None)
+    oauth_subject: Mapped[str | None] = mapped_column(default=None)
+    name: Mapped[str | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class AgentORM(Base):
     __tablename__ = "agents"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str]
     model: Mapped[str]
     system_prompt: Mapped[str] = mapped_column(Text)
@@ -62,6 +81,7 @@ class ApiKeyORM(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     key_hash: Mapped[str] = mapped_column(unique=True, index=True)
     user_id: Mapped[str] = mapped_column(index=True)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     provider: Mapped[str]
     encrypted_key: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
@@ -71,6 +91,7 @@ class RunORM(Base):
     __tablename__ = "runs"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
     agent_version: Mapped[int]
     input: Mapped[str] = mapped_column(Text)
@@ -106,6 +127,7 @@ class EvalSuiteORM(Base):
     __tablename__ = "eval_suites"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str]
     agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
     test_cases: Mapped[list] = mapped_column(JSONB, default=list)
@@ -154,6 +176,7 @@ class CostRecordORM(Base):
     __tablename__ = "cost_records"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
     run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("runs.id", ondelete="SET NULL"), default=None
