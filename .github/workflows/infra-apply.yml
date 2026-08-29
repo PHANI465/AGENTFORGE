@@ -1,0 +1,105 @@
+name: Infra Apply
+
+# Manual-only, deliberately: ADR-003 (CLAUDE.md) runs this project on a $0
+# AWS budget with no always-on cloud resources — spin up, demo, tear down
+# (scripts/teardown-aws.sh), not deploy-on-every-push. Auto-applying
+# Terraform on merge would silently start real billing and risks unattended
+# infra drift on a solo-maintained project with no infra review gate.
+#
+# `plan` always runs on dispatch. `apply` only runs if the triggering
+# environment has required reviewers configured (Settings → Environments) —
+# add yourself as a reviewer on "infra-prod" (and "infra-staging" if you
+# want the same gate there) before the first real apply.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Which envs/<name>.tfvars to plan/apply"
+        required: true
+        type: choice
+        options: [dev, staging, prod]
+      apply:
+        description: "Actually apply (unchecked = plan only)"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write # AWS OIDC role assumption, same as cd.yml
+
+jobs:
+  plan:
+    name: terraform plan (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: terraform init
+        working-directory: infra/terraform
+        run: terraform init
+
+      - name: terraform plan
+        working-directory: infra/terraform
+        env:
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        # envs/<env>.tfvars is gitignored (local-only, same pattern as
+        # .env) and doesn't exist in a fresh CI checkout — the .example
+        # file is the tracked, complete config (nothing sensitive lives in
+        # it; db_password comes from TF_VAR_db_password above). If you've
+        # customized envs/<env>.tfvars locally beyond the example (e.g. a
+        # real domain_name), apply from your machine instead, or update
+        # the .example file to match before running this.
+        run: terraform plan -var-file="envs/${{ inputs.environment }}.tfvars.example" -out=tfplan
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ inputs.environment }}
+          path: infra/terraform/tfplan
+          retention-days: 1
+
+  apply:
+    name: terraform apply (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    needs: [plan]
+    if: inputs.apply == true
+    # Requires this environment to exist under Settings → Environments with
+    # "Required reviewers" set — that's what actually makes this a gated
+    # step rather than firing immediately after plan.
+    environment: infra-${{ inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: terraform init
+        working-directory: infra/terraform
+        run: terraform init
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ inputs.environment }}
+          path: infra/terraform
+
+      - name: terraform apply
+        working-directory: infra/terraform
+        run: terraform apply tfplan
+
+      - name: Show outputs (copy the ARNs into repo secrets for cd.yml)
+        working-directory: infra/terraform
+        run: terraform output

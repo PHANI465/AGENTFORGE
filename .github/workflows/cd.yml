@@ -142,6 +142,35 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --region ${{ vars.AWS_REGION || 'us-east-1' }} --name agentforge-${{ vars.DEPLOY_ENVIRONMENT || 'staging' }}
 
+      # LB_CONTROLLER_ROLE_ARN / EXTERNAL_DNS_ROLE_ARN come from
+      # `terraform output` after infra-apply.yml has provisioned
+      # infra/terraform/modules/{lb-controller-irsa,external-dns-irsa} for
+      # this environment (enable_tls = true) — copy them into repo secrets,
+      # same as POSTGRES_DSN/REDIS_URL below. Skipped entirely if unset, so
+      # this is a no-op until an environment actually turns TLS on.
+      - name: Install AWS Load Balancer Controller
+        if: vars.DEPLOY_TO_AWS == 'true' && secrets.LB_CONTROLLER_ROLE_ARN != ''
+        run: |
+          helm repo add eks https://aws.github.io/eks-charts
+          helm repo update
+          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+            --namespace kube-system \
+            --set clusterName=agentforge-${{ vars.DEPLOY_ENVIRONMENT || 'staging' }} \
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=${{ secrets.LB_CONTROLLER_ROLE_ARN }} \
+            --wait --timeout 5m
+
+      - name: Install external-dns
+        if: vars.DEPLOY_TO_AWS == 'true' && secrets.EXTERNAL_DNS_ROLE_ARN != ''
+        run: |
+          helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
+          helm repo update
+          helm upgrade --install external-dns external-dns/external-dns \
+            --namespace kube-system \
+            --set provider=aws \
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=${{ secrets.EXTERNAL_DNS_ROLE_ARN }} \
+            --set txtOwnerId=agentforge-${{ vars.DEPLOY_ENVIRONMENT || 'staging' }} \
+            --wait --timeout 5m
+
       - name: Deploy
         working-directory: infra/helm/agentforge
         run: |
@@ -152,4 +181,6 @@ jobs:
             --set-string externalConfig.postgresDsn=${{ secrets.POSTGRES_DSN }} \
             --set-string externalConfig.redisUrl=${{ secrets.REDIS_URL }} \
             --set-string externalConfig.openaiApiKey=${{ secrets.OPENAI_API_KEY }} \
+            --set-string externalConfig.encryptionMasterKey=${{ secrets.ENCRYPTION_MASTER_KEY }} \
+            --set-string ingress.annotations."alb\.ingress\.kubernetes\.io/certificate-arn"=${{ secrets.ACM_CERTIFICATE_ARN }} \
             --wait --timeout 5m

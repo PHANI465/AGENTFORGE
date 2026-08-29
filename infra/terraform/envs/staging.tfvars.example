@@ -1,0 +1,35 @@
+# Copy to staging.tfvars (gitignored) before running terraform plan/apply —
+# same pattern as dev.tfvars.example.
+#
+# One tier up from dev: still single-NAT and single-AZ RDS to control cost,
+# but a slightly larger node group so it can hold a full replica of
+# production traffic patterns for pre-release testing.
+
+environment = "staging"
+aws_region  = "us-east-1"
+
+vpc_cidr           = "10.1.0.0/16"
+az_count           = 2
+single_nat_gateway = true
+
+eks_cluster_version    = "1.30"
+eks_node_instance_types = ["t3.medium"]
+eks_node_desired_size  = 2
+eks_node_min_size      = 1
+eks_node_max_size      = 4
+
+rds_instance_class       = "db.t4g.small"
+rds_allocated_storage_gb = 50
+rds_engine_version       = "16.4"
+rds_multi_az             = false
+
+redis_node_type       = "cache.t4g.small"
+redis_num_cache_nodes = 1
+
+create_state_bucket = false
+
+# Placeholder — matches infra/helm/agentforge/values-staging.yaml's ingress.host.
+# Substitute a real owned domain, then flip enable_tls on, before applying.
+enable_tls          = false
+domain_name         = "staging.agentforge.example.com"
+create_route53_zone = true

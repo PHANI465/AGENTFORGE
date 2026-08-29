@@ -240,6 +240,11 @@ Before marking any milestone complete:
 - **Rationale**: Easier dependency management, atomic commits across services, simpler CI/CD. At our scale (one developer), monorepo is clearly better.
 - **Consequence**: Use Python workspaces (pyproject.toml) for package management. Docker builds use multi-stage with specific service contexts.
 
+### ADR-005: Real AWS/K8s Deployment Is Opt-In, Not the Default
+- **Decision**: The Terraform/Helm production path can now be genuinely applied (Route53 + ACM + AWS Load Balancer Controller + external-dns, `.github/workflows/infra-apply.yml`), but only via a manual, gated `workflow_dispatch` — never automatically on push. ADR-003's $0-by-default posture stands; this ADR only says the production path is no longer purely aspirational.
+- **Rationale**: Going public needs real DNS/TLS, which ADR-003 didn't cover. But auto-applying on every merge would silently start real billing and risks unattended infra drift on a solo-maintained project with no infra review gate — the opposite of ADR-003's cost-consciousness.
+- **Consequence**: `enable_tls` defaults to `false` in every environment's `.tfvars` (see `docs/deployment-runbook.md`); flipping it on and running `infra-apply.yml` is a deliberate, one-at-a-time action, not a side effect of shipping a feature.
+
 ---
 
 ## AWS Constraints

@@ -1,0 +1,38 @@
+# Copy to prod.tfvars (gitignored) before running terraform plan/apply —
+# same pattern as dev.tfvars.example.
+#
+# Multi-AZ where it matters (RDS standby, one NAT per AZ), larger baseline
+# node count, Multi-AZ Redis replica. This is the shape that would actually
+# get deployed if AgentForge had paying users — see docs/aws-cost-estimate.md
+# for the (much higher) monthly number this implies. Per ADR-003/ADR-005,
+# applying this is opt-in and gated (docs/deployment-runbook.md) — nothing
+# in the platform itself requires prod to be live.
+
+environment = "prod"
+aws_region  = "us-east-1"
+
+vpc_cidr           = "10.2.0.0/16"
+az_count           = 3
+single_nat_gateway = false
+
+eks_cluster_version    = "1.30"
+eks_node_instance_types = ["t3.large"]
+eks_node_desired_size  = 3
+eks_node_min_size      = 2
+eks_node_max_size      = 6
+
+rds_instance_class       = "db.r6g.large"
+rds_allocated_storage_gb = 100
+rds_engine_version       = "16.4"
+rds_multi_az             = true
+
+redis_node_type       = "cache.r6g.large"
+redis_num_cache_nodes = 2
+
+create_state_bucket = true
+
+# Placeholder — matches infra/helm/agentforge/values-prod.yaml's ingress.host.
+# Substitute a real owned domain, then flip enable_tls on, before applying.
+enable_tls          = false
+domain_name         = "agentforge.example.com"
+create_route53_zone = true

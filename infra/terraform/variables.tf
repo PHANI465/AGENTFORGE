@@ -131,3 +131,21 @@ variable "create_state_bucket" {
   type        = bool
   default     = false
 }
+
+variable "enable_tls" {
+  description = "Provision Route53 + ACM + the Load Balancer Controller's IRSA role for public HTTPS ingress. Off by default (e.g. dev spin-up/teardown clusters with no real domain yet) — see docs/deployment-runbook.md."
+  type        = bool
+  default     = false
+}
+
+variable "domain_name" {
+  description = "Domain (or subdomain) this environment serves from, e.g. \"agentforge.example.com\". Only used when enable_tls = true. Still a placeholder — substitute a real owned domain before applying with enable_tls = true."
+  type        = string
+  default     = "agentforge.example.com"
+}
+
+variable "create_route53_zone" {
+  description = "true: this environment creates its own hosted zone for domain_name. false: look up an existing zone by that name instead (e.g. an environment sharing a zone another one already created). Only used when enable_tls = true."
+  type        = bool
+  default     = true
+}

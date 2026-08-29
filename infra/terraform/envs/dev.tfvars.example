@@ -1,0 +1,35 @@
+# Copy to dev.tfvars (gitignored — see .gitignore's *.tfvars rule) before
+# running terraform plan/apply. This .example file is the tracked reference;
+# dev.tfvars itself is a local working copy, same pattern as .env.example.
+#
+# Cheapest viable shape — for spinning the cluster up briefly to prove it
+# works, then tearing it down (see scripts/teardown-aws.sh). Not meant to
+# stay running; see docs/aws-cost-estimate.md for what this actually costs
+# per hour/day if left up.
+
+environment = "dev"
+aws_region  = "us-east-1"
+
+vpc_cidr           = "10.0.0.0/16"
+az_count           = 2
+single_nat_gateway = true
+
+eks_cluster_version    = "1.30"
+eks_node_instance_types = ["t3.medium"]
+eks_node_desired_size  = 1
+eks_node_min_size      = 1
+eks_node_max_size      = 2
+
+rds_instance_class       = "db.t4g.micro"
+rds_allocated_storage_gb = 20
+rds_engine_version       = "16.4"
+rds_multi_az             = false
+
+redis_node_type       = "cache.t4g.micro"
+redis_num_cache_nodes = 1
+
+create_state_bucket = false
+
+# db_password is intentionally not set here — export TF_VAR_db_password
+# before running plan/apply. Never put a real password in a checked-in
+# .tfvars file.

@@ -18,6 +18,11 @@ output "oidc_provider_arn" {
   value = aws_iam_openid_connect_provider.eks.arn
 }
 
+output "oidc_provider_url" {
+  description = "Bare issuer hostname (no https://) — IRSA trust policies key their StringEquals condition on this, not the ARN."
+  value       = replace(aws_iam_openid_connect_provider.eks.url, "https://", "")
+}
+
 output "node_security_group_id" {
   description = "EKS auto-manages a node security group; exposed here via the cluster's vpc_config for use by RDS/ElastiCache security group rules."
   value       = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id

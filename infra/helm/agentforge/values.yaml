@@ -21,6 +21,11 @@ ingress:
   enabled: false
   className: alb
   host: ""
+  # ALB terminates TLS itself using the certificate-arn annotation (below) —
+  # tlsEnabled just controls whether spec.tls (which tells the AWS Load
+  # Balancer Controller to open an HTTPS listener) gets rendered at all.
+  # There's no k8s TLS Secret involved, unlike nginx-ingress.
+  tlsEnabled: false
   annotations: {}
 
 # One entry per deployable service. `path` under ingress becomes the route

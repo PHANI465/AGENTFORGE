@@ -31,3 +31,28 @@ output "postgres_dsn" {
 output "redis_url" {
   value = module.elasticache.redis_url
 }
+
+output "acm_certificate_arn" {
+  description = "Only set when enable_tls = true. Feed this into the Helm chart's alb.ingress.kubernetes.io/certificate-arn annotation."
+  value       = var.enable_tls ? module.acm[0].certificate_arn : null
+}
+
+output "lb_controller_irsa_role_arn" {
+  description = "Only set when enable_tls = true. Feed this into the aws-load-balancer-controller Helm install's serviceAccount.annotations."
+  value       = var.enable_tls ? module.lb_controller_irsa[0].role_arn : null
+}
+
+output "external_dns_irsa_role_arn" {
+  description = "Only set when enable_tls = true. Feed this into the external-dns Helm install's serviceAccount.annotations."
+  value       = var.enable_tls ? module.external_dns_irsa[0].role_arn : null
+}
+
+output "route53_zone_id" {
+  description = "Only set when enable_tls = true. external-dns needs this (via its own IAM policy, not shown here) to manage the app hostname's record."
+  value       = var.enable_tls ? module.route53[0].zone_id : null
+}
+
+output "route53_name_servers" {
+  description = "Only set when enable_tls = true and create_route53_zone = true. Delegate domain_name to Route53 by adding these as NS records at your registrar."
+  value       = var.enable_tls ? module.route53[0].name_servers : null
+}

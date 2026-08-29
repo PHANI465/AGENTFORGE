@@ -61,3 +61,37 @@ module "s3" {
   environment          = var.environment
   create_state_bucket  = var.create_state_bucket
 }
+
+module "route53" {
+  source = "./modules/route53"
+  count  = var.enable_tls ? 1 : 0
+
+  domain_name = var.domain_name
+  create_zone = var.create_route53_zone
+}
+
+module "acm" {
+  source = "./modules/acm"
+  count  = var.enable_tls ? 1 : 0
+
+  domain_name = var.domain_name
+  zone_id     = module.route53[0].zone_id
+}
+
+module "lb_controller_irsa" {
+  source = "./modules/lb-controller-irsa"
+  count  = var.enable_tls ? 1 : 0
+
+  environment        = var.environment
+  oidc_provider_arn  = module.eks.oidc_provider_arn
+  oidc_provider_url  = module.eks.oidc_provider_url
+}
+
+module "external_dns_irsa" {
+  source = "./modules/external-dns-irsa"
+  count  = var.enable_tls ? 1 : 0
+
+  environment        = var.environment
+  oidc_provider_arn  = module.eks.oidc_provider_arn
+  oidc_provider_url  = module.eks.oidc_provider_url
+}

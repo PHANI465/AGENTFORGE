@@ -5,10 +5,14 @@ ingress:
   enabled: true
   className: alb
   host: agentforge.example.com
+  tlsEnabled: true
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/certificate-arn: "" # ACM cert ARN — fill in before applying
+    # From `terraform output acm_certificate_arn` (envs/prod.tfvars, enable_tls = true).
+    alb.ingress.kubernetes.io/certificate-arn: ""
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
 
 services:
   api-gateway:
