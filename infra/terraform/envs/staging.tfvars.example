@@ -33,3 +33,4 @@ create_state_bucket = false
 enable_tls          = false
 domain_name         = "staging.agentforge.example.com"
 create_route53_zone = true
+enable_waf          = false

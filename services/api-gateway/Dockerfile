@@ -8,6 +8,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock* ./
 COPY packages ./packages
 COPY services/api-gateway ./services/api-gateway
+# scripts/seed.py --reset is what the demo-reset CronJob runs (see
+# infra/helm/agentforge/templates/cronjob-demo-reset.yaml) — reusing this
+# image (it already has agentforge_common, which is all the script needs)
+# avoids a whole separate image/ECR-repo/CI-matrix-entry for one script.
+COPY scripts ./scripts
 
 RUN uv sync --no-dev --package api-gateway
 

@@ -95,3 +95,10 @@ module "external_dns_irsa" {
   oidc_provider_arn  = module.eks.oidc_provider_arn
   oidc_provider_url  = module.eks.oidc_provider_url
 }
+
+module "waf" {
+  source = "./modules/waf"
+  count  = var.enable_waf ? 1 : 0
+
+  environment = var.environment
+}

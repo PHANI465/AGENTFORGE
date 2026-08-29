@@ -149,3 +149,9 @@ variable "create_route53_zone" {
   type        = bool
   default     = true
 }
+
+variable "enable_waf" {
+  description = "Provision a regional WAFv2 Web ACL (rate-limiting + AWS managed common rule set) for the public demo environment. Independent of enable_tls so TLS and WAF can be turned on one at a time — see docs/deployment-runbook.md."
+  type        = bool
+  default     = false
+}

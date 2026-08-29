@@ -64,7 +64,6 @@ def upgrade() -> None:
         ],
     )
 
-    owner_id_col = sa.column("owner_id", postgresql.UUID(as_uuid=True))
     for table_name in _OWNED_TABLES:
         op.add_column(
             table_name,
@@ -75,6 +74,11 @@ def upgrade() -> None:
                 nullable=True,
             ),
         )
+        # A fresh column object per iteration — sa.table() binds a column to
+        # its parent table on construction (sets column.table), so reusing
+        # one column instance across multiple tables raises "already
+        # assigned to table" on the second iteration.
+        owner_id_col = sa.column("owner_id", postgresql.UUID(as_uuid=True))
         table = sa.table(table_name, owner_id_col)
         op.execute(
             table.update().where(owner_id_col.is_(None)).values(owner_id=SYSTEM_USER_ID)

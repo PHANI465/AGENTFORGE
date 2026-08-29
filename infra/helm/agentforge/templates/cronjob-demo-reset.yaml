@@ -1,0 +1,53 @@
+{{/*
+Periodically wipes and reseeds the fixed-ID public demo dataset
+(scripts/seed.py --reset) — keeps the public demo (docs/deployment-runbook.md)
+sandboxed: nothing a visitor does persists past the next reset. Off by
+default; only meaningful once ingress.enabled + demo.resetEnabled are both
+true for an environment actually serving public traffic.
+*/}}
+{{- if .Values.demo.resetEnabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: agentforge-demo-reset
+  labels:
+    {{- include "agentforge.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.demo.resetSchedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "agentforge.labels" . | nindent 12 }}
+            app.kubernetes.io/name: agentforge-demo-reset
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: demo-reset
+              image: {{ include "agentforge.image" (dict "global" .Values.global "svc" (index .Values.services "api-gateway")) }}
+              command: ["uv", "run", "--project", "/app", "python", "/app/scripts/seed.py", "--reset"]
+              env:
+                - name: POSTGRES_DSN
+                  valueFrom:
+                    secretKeyRef:
+                      name: agentforge-secrets
+                      key: POSTGRES_DSN
+                - name: ENCRYPTION_MASTER_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: agentforge-secrets
+                      key: ENCRYPTION_MASTER_KEY
+                - name: OPENAI_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: agentforge-secrets
+                      key: OPENAI_API_KEY
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { cpu: 200m, memory: 256Mi }
+{{- end }}

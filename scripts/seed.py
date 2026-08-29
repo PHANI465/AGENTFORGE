@@ -1,9 +1,17 @@
-"""Seed the database with a sample agent, eval suite, run, and cost record.
+"""Seed the database with sample agents, eval suite, run, and cost record.
 
 Usage:
     uv run --package agentforge-common python scripts/seed.py
+    uv run --package agentforge-common python scripts/seed.py --reset
+
+Without --reset, every run inserts fresh rows with random IDs (the
+original single-shot dev-seed behavior). With --reset, the demo agents use
+fixed, well-known IDs so this is idempotent — safe to run on a schedule
+(see infra/helm/agentforge/templates/cronjob-demo-reset.yaml) against a
+public demo environment without accumulating duplicate data on every run.
 """
 
+import argparse
 import asyncio
 import os
 import uuid
@@ -29,11 +37,49 @@ from agentforge_common.orm import (
 )
 from agentforge_common.security import encrypt_key, generate_api_key, hash_api_key
 
+# Fixed (not random) so --reset can find and replace the exact same rows
+# instead of accumulating a new set on every run.
+DEMO_AGENT_ID = uuid.UUID("00000000-0000-0000-0000-0000000000a1")
+DEMO_AGENT_2_ID = uuid.UUID("00000000-0000-0000-0000-0000000000a2")
+DEMO_SUITE_ID = uuid.UUID("00000000-0000-0000-0000-0000000000b1")
+DEMO_KEY_ID = uuid.UUID("00000000-0000-0000-0000-0000000000c1")
 
-async def seed() -> None:
+# Small, platform-funded caps — the public demo runs on AgentForge's own
+# OPENAI_API_KEY (via the existing decrypt_key(...) or os.getenv(...)
+# fallback in routers/runs.py), so these bound worst-case exposure per
+# agent per day rather than requiring visitors to bring their own key.
+DEMO_AGENT_BUDGET_USD = 0.50
+DEMO_AGENT_2_BUDGET_USD = 0.25
+
+
+async def reset_demo_data(session) -> None:
+    """Delete prior demo rows by their fixed IDs. Cascades (agent_versions,
+    runs, run_steps, cost_records, eval_suites, eval_runs, eval_results all
+    FK to agents/eval_suites with ON DELETE CASCADE) clear everything each
+    agent owns; only the agents, suite, and key rows need deleting directly."""
+    for agent_id in (DEMO_AGENT_ID, DEMO_AGENT_2_ID):
+        agent = await session.get(AgentORM, agent_id)
+        if agent is not None:
+            await session.delete(agent)
+    suite = await session.get(EvalSuiteORM, DEMO_SUITE_ID)
+    if suite is not None:
+        await session.delete(suite)
+    key = await session.get(ApiKeyORM, DEMO_KEY_ID)
+    if key is not None:
+        await session.delete(key)
+    await session.flush()
+
+
+async def seed(reset: bool = False) -> None:
     async with async_session_factory() as session:
+        if reset:
+            await reset_demo_data(session)
+            agent_id, suite_id, key_id = DEMO_AGENT_ID, DEMO_SUITE_ID, DEMO_KEY_ID
+        else:
+            agent_id, suite_id, key_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
         agent = AgentORM(
-            id=uuid.uuid4(),
+            id=agent_id,
             owner_id=SYSTEM_USER_ID,
             name="demo-support-agent",
             model="gpt-4o-mini",
@@ -59,7 +105,10 @@ async def seed() -> None:
                 },
             ],
             safety_policy={"rules": ["never share customer PII"], "on_violation": "block"},
-            config={"max_tokens": 1024, "temperature": 0.7, "timeout": 30},
+            config={
+                "max_tokens": 1024, "temperature": 0.7, "timeout": 30,
+                "optimization": {"daily_budget_usd": DEMO_AGENT_BUDGET_USD} if reset else {},
+            },
             status=AgentStatus.ACTIVE,
         )
         session.add(agent)
@@ -129,7 +178,7 @@ async def seed() -> None:
         )
 
         eval_suite = EvalSuiteORM(
-            id=uuid.uuid4(),
+            id=suite_id,
             owner_id=SYSTEM_USER_ID,
             name="support-agent-smoke-suite",
             agent_id=agent.id,
@@ -192,12 +241,32 @@ async def seed() -> None:
             ]
         )
 
+        # A second, simpler demo agent — only seeded on --reset (the public
+        # demo), not the plain single-agent local dev seed, to keep the
+        # everyday dev experience unchanged.
+        if reset:
+            agent_2 = AgentORM(
+                id=DEMO_AGENT_2_ID,
+                owner_id=SYSTEM_USER_ID,
+                name="demo-writing-agent",
+                model="gpt-4o-mini",
+                system_prompt="You are a concise writing assistant. Keep answers short.",
+                safety_policy={"rules": ["never share customer PII"], "on_violation": "block"},
+                config={
+                    "max_tokens": 512, "temperature": 0.7, "timeout": 30,
+                    "optimization": {"daily_budget_usd": DEMO_AGENT_2_BUDGET_USD},
+                },
+                status=AgentStatus.ACTIVE,
+            )
+            session.add(agent_2)
+            await session.flush()
+
         dev_raw_key = generate_api_key()
         session.add(
             ApiKeyORM(
-                id=uuid.uuid4(),
+                id=key_id,
                 key_hash=hash_api_key(dev_raw_key),
-                user_id="dev-user",
+                user_id="demo-user" if reset else "dev-user",
                 owner_id=SYSTEM_USER_ID,
                 provider="openai",
                 encrypted_key=encrypt_key(os.environ.get("OPENAI_API_KEY", "")),
@@ -205,14 +274,24 @@ async def seed() -> None:
         )
 
         await session.commit()
+        agent_count = 2 if reset else 1
         print(
-            f"Seeded agent {agent.id} ({agent.name}) with 1 run, 3 run steps, "
+            f"Seeded {agent_count} agent(s) ({agent.name}"
+            f"{', demo-writing-agent' if reset else ''}) with 1 run, 3 run steps, "
             f"1 cost record, 1 eval suite, 1 eval run, 2 eval results."
         )
         print()
-        print(f"Dev API key (save this — it won't be shown again): {dev_raw_key}")
+        label = "Demo" if reset else "Dev"
+        print(f"{label} API key (save this — it won't be shown again): {dev_raw_key}")
         print('Try it:  curl -H "X-API-Key: ' + dev_raw_key + '" http://localhost:8000/api/v1/agents')
 
 
 if __name__ == "__main__":
-    asyncio.run(seed())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--reset", action="store_true",
+        help="Idempotently wipe and reseed the fixed-ID public demo dataset instead of "
+             "inserting a fresh one-off dev dataset.",
+    )
+    args = parser.parse_args()
+    asyncio.run(seed(reset=args.reset))

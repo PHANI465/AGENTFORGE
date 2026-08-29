@@ -17,6 +17,14 @@ externalConfig:
   openaiApiKey: ""
   encryptionMasterKey: ""
 
+# Periodic wipe-and-reseed of the fixed-ID public demo dataset — see
+# docs/deployment-runbook.md and scripts/seed.py's --reset flag. Off by
+# default; only meaningful for an environment actually serving public
+# demo traffic (ingress.enabled: true).
+demo:
+  resetEnabled: false
+  resetSchedule: "0 */6 * * *"
+
 ingress:
   enabled: false
   className: alb

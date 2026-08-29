@@ -183,4 +183,5 @@ jobs:
             --set-string externalConfig.openaiApiKey=${{ secrets.OPENAI_API_KEY }} \
             --set-string externalConfig.encryptionMasterKey=${{ secrets.ENCRYPTION_MASTER_KEY }} \
             --set-string ingress.annotations."alb\.ingress\.kubernetes\.io/certificate-arn"=${{ secrets.ACM_CERTIFICATE_ARN }} \
+            --set-string ingress.annotations."alb\.ingress\.kubernetes\.io/wafv2-acl-arn"=${{ secrets.WAF_WEB_ACL_ARN }} \
             --wait --timeout 5m

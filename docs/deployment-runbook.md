@@ -43,7 +43,10 @@ runbook is only for the "someone else can actually visit a URL" step.
 ## Step 1 — Provision infrastructure
 
 1. Set `enable_tls = true` in the target environment's `envs/<env>.tfvars`
-   (it ships `false`).
+   (it ships `false`). For a public demo environment (see
+   `docs/PROJECT_DOSSIER.md`'s ecosystem section), also set `enable_waf =
+   true` — rate-limiting + AWS's managed common rule set in front of
+   whatever's public.
 2. Run **Actions → Infra Apply → Run workflow**, choosing the environment,
    leaving "apply" unchecked first — this runs `terraform plan` only and
    uploads the plan as a build artifact. Read it.
@@ -55,6 +58,7 @@ runbook is only for the "someone else can actually visit a URL" step.
    - `acm_certificate_arn` → `ACM_CERTIFICATE_ARN`
    - `lb_controller_irsa_role_arn` → `LB_CONTROLLER_ROLE_ARN`
    - `external_dns_irsa_role_arn` → `EXTERNAL_DNS_ROLE_ARN`
+   - `waf_web_acl_arn` → `WAF_WEB_ACL_ARN` (only set if `enable_waf = true`)
 5. **If `create_route53_zone = true`** (the default), `terraform output
    route53_name_servers` prints the NS records Route53 assigned. Add
    those as NS records at your domain registrar — until you do, the

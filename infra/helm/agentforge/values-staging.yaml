@@ -1,6 +1,12 @@
 global:
   environment: staging
 
+# staging is the public demo environment (docs/deployment-runbook.md) —
+# sandboxed, platform-funded, reset on a schedule so nothing a visitor
+# does persists.
+demo:
+  resetEnabled: true
+
 ingress:
   enabled: true
   className: alb
@@ -13,10 +19,21 @@ ingress:
     alb.ingress.kubernetes.io/certificate-arn: ""
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
     alb.ingress.kubernetes.io/ssl-redirect: "443"
+    # From `terraform output waf_web_acl_arn` (envs/staging.tfvars, enable_waf = true).
+    alb.ingress.kubernetes.io/wafv2-acl-arn: ""
 
 services:
   api-gateway:
     replicas: 2
+    env:
+      # Tighter than the platform default (10/minute) — this is the public
+      # demo, funded by the platform's own key and already budget-capped
+      # per agent (scripts/seed.py --reset), but a lower per-key request
+      # rate limits how fast one visitor can burn through that shared
+      # budget before the next reset. WAF's rate-based rule (2000 req/5min
+      # per IP) is the volumetric/bot defense; this is the narrower,
+      # cost-fairness one.
+      RATE_LIMIT_RUN: "3/minute"
   agent-runtime:
     replicas: 2
   dashboard:

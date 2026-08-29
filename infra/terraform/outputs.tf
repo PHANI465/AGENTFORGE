@@ -47,6 +47,11 @@ output "external_dns_irsa_role_arn" {
   value       = var.enable_tls ? module.external_dns_irsa[0].role_arn : null
 }
 
+output "waf_web_acl_arn" {
+  description = "Only set when enable_waf = true. Feed this into the Helm chart's alb.ingress.kubernetes.io/wafv2-acl-arn annotation."
+  value       = var.enable_waf ? module.waf[0].web_acl_arn : null
+}
+
 output "route53_zone_id" {
   description = "Only set when enable_tls = true. external-dns needs this (via its own IAM policy, not shown here) to manage the app hostname's record."
   value       = var.enable_tls ? module.route53[0].zone_id : null
