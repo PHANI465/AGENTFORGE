@@ -9,9 +9,6 @@ dependencies = [
     "agentforge-common",
 ]
 
-[project.scripts]
-agentforge = "agentforge.cli:main"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

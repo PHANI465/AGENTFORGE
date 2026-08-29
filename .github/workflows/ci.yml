@@ -50,6 +50,28 @@ jobs:
           ENCRYPTION_MASTER_KEY: "41d6du78ymDknwOXO5oBmrZ-HTbRpGNnVzNzxQ2Ju5M="
         run: uv run pytest tests/ -q
 
+  cli-go:
+    name: Build + vet (Go CLI)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: packages/cli-go/go.sum
+
+      - name: Tidy + vet
+        working-directory: packages/cli-go
+        run: |
+          go mod tidy
+          go vet ./...
+
+      - name: Build
+        working-directory: packages/cli-go
+        run: go build ./...
+
   dashboard:
     name: Lint + build (dashboard)
     runs-on: ubuntu-latest
