@@ -10,6 +10,34 @@ Nothing here is required to run AgentForge locally — `make dev` /
 `docker compose up` (Docker Compose, $0) covers that on its own. This
 runbook is only for the "someone else can actually visit a URL" step.
 
+## No domain yet? Skip straight to a public demo URL
+
+You don't need a domain, ACM, Route53, or the `auth-service` to get a
+real public URL — `enable_ingress = true` alone provisions everything a
+bare `http://<alb-hostname>` needs, and `values-staging.yaml` is already
+shaped for exactly this (no TLS, `auth-service.enabled: false`, WAF on).
+This is the cheapest path to "anyone can visit a link and try the demo":
+
+1. Skip prerequisite 1 below (no domain needed) and prerequisite 3's
+   auth-service secrets (the service isn't deployed in this mode).
+2. In `envs/staging.tfvars` (copied from the tracked `.example`), leave
+   `enable_ingress = true` and `enable_tls = false` — this is already the
+   checked-in default.
+3. Follow Steps 1–4 below as written; skip the `ACM_CERTIFICATE_ARN` /
+   `EXTERNAL_DNS_ROLE_ARN` secrets and the `route53_name_servers` /
+   domain-delegation part of Step 1.5 — nothing produces them when
+   `enable_tls = false`.
+4. In Step 3, `kubectl get ingress` prints the ALB's own hostname (e.g.
+   `k8s-agentforge-....elb.amazonaws.com`) in the `ADDRESS` column — that
+   *is* your public demo URL, `http://` only (no cert to serve HTTPS).
+5. Still spin up → demo → tear down (Step 4) rather than leaving it
+   running, same cost reasoning as everywhere else in this runbook.
+
+Turn on a real domain + HTTPS + auth-service later by following the
+rest of this runbook once you own one — nothing above needs to be undone
+to do that; `enable_tls` and `auth-service.enabled` just get flipped on
+top of what's already live.
+
 ## Prerequisites (once, before any environment goes live)
 
 0. **`envs/*.tfvars` is gitignored** (same pattern as `.env`) — the

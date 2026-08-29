@@ -80,7 +80,7 @@ module "acm" {
 
 module "lb_controller_irsa" {
   source = "./modules/lb-controller-irsa"
-  count  = var.enable_tls ? 1 : 0
+  count  = var.enable_ingress ? 1 : 0
 
   environment        = var.environment
   oidc_provider_arn  = module.eks.oidc_provider_arn

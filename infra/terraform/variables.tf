@@ -132,8 +132,14 @@ variable "create_state_bucket" {
   default     = false
 }
 
+variable "enable_ingress" {
+  description = "Provision the AWS Load Balancer Controller's IRSA role, so a public ALB can actually be created for the Ingress — independent of TLS. Without a domain you can still get a public http://<alb-hostname> URL with this on and enable_tls off; see docs/deployment-runbook.md."
+  type        = bool
+  default     = false
+}
+
 variable "enable_tls" {
-  description = "Provision Route53 + ACM + the Load Balancer Controller's IRSA role for public HTTPS ingress. Off by default (e.g. dev spin-up/teardown clusters with no real domain yet) — see docs/deployment-runbook.md."
+  description = "Provision Route53 + ACM + external-dns's IRSA role for a real domain over HTTPS. Requires enable_ingress = true too (TLS terminates on the same ALB). Needs a real owned domain — see domain_name below."
   type        = bool
   default     = false
 }

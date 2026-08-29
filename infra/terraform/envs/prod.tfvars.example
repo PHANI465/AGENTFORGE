@@ -32,7 +32,11 @@ redis_num_cache_nodes = 2
 create_state_bucket = true
 
 # Placeholder — matches infra/helm/agentforge/values-prod.yaml's ingress.host.
-# Substitute a real owned domain, then flip enable_tls on, before applying.
+# Substitute a real owned domain, then flip both on before applying:
+# enable_ingress alone gets a public ALB URL; enable_tls (needs
+# enable_ingress = true too) adds the real domain + HTTPS on top of it.
+enable_ingress      = false
 enable_tls          = false
 domain_name         = "agentforge.example.com"
 create_route53_zone = true
+enable_waf          = true

@@ -7,18 +7,21 @@ global:
 demo:
   resetEnabled: true
 
+# No custom domain: host is left empty so the Ingress rule matches any
+# hostname, which is all that's needed to reach the ALB's own DNS name
+# directly (http://<alb-hostname>, from `kubectl get ingress`). tlsEnabled
+# stays off since ACM/ALB HTTPS termination needs a real owned domain
+# (enable_tls in Terraform) — see docs/deployment-runbook.md for turning
+# both on later once a domain is owned.
 ingress:
   enabled: true
   className: alb
-  host: staging.agentforge.example.com
-  tlsEnabled: true
+  host: ""
+  tlsEnabled: false
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    # From `terraform output acm_certificate_arn` (envs/staging.tfvars, enable_tls = true).
-    alb.ingress.kubernetes.io/certificate-arn: ""
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
-    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
     # From `terraform output waf_web_acl_arn` (envs/staging.tfvars, enable_waf = true).
     alb.ingress.kubernetes.io/wafv2-acl-arn: ""
 
@@ -38,10 +41,11 @@ services:
     replicas: 2
   dashboard:
     replicas: 1
+  # Signup/login/OAuth need a real domain (OAuth provider redirect URIs
+  # can't target a bare, rotating ALB hostname) and their own secrets
+  # (signing key, OAuth app credentials) that this no-domain demo
+  # deployment was never given — deploying it here would just crash-loop.
+  # The demo runs on the platform's own shared API key instead (see
+  # scripts/seed.py --reset); flip this on once a domain + OAuth apps exist.
   auth-service:
-    env:
-      # No /auth suffix — the service itself registers routes under
-      # /auth/... to match what the Ingress forwards (see NewMux's comment
-      # in services/auth-service/internal/handlers/handlers.go).
-      OAUTH_REDIRECT_BASE_URL: "https://staging.agentforge.example.com"
-      DASHBOARD_URL: "https://staging.agentforge.example.com"
+    enabled: false

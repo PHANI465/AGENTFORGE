@@ -151,9 +151,12 @@ jobs:
       # LB_CONTROLLER_ROLE_ARN / EXTERNAL_DNS_ROLE_ARN come from
       # `terraform output` after infra-apply.yml has provisioned
       # infra/terraform/modules/{lb-controller-irsa,external-dns-irsa} for
-      # this environment (enable_tls = true) — copy them into repo secrets,
-      # same as POSTGRES_DSN/REDIS_URL below. Skipped entirely if unset, so
-      # this is a no-op until an environment actually turns TLS on.
+      # this environment — lb-controller-irsa needs only enable_ingress =
+      # true (a public ALB URL, no domain required); external-dns-irsa
+      # needs enable_tls = true (a real domain's Route53 record). Copy
+      # whichever apply, into repo secrets, same as POSTGRES_DSN/REDIS_URL
+      # below. Each step is skipped entirely if its secret is unset, so
+      # this is a no-op until an environment actually turns that flag on.
       - name: Install AWS Load Balancer Controller
         if: vars.DEPLOY_TO_AWS == 'true' && secrets.LB_CONTROLLER_ROLE_ARN != ''
         run: |

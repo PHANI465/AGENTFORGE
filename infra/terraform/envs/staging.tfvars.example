@@ -1,9 +1,11 @@
 # Copy to staging.tfvars (gitignored) before running terraform plan/apply —
 # same pattern as dev.tfvars.example.
 #
-# One tier up from dev: still single-NAT and single-AZ RDS to control cost,
-# but a slightly larger node group so it can hold a full replica of
-# production traffic patterns for pre-release testing.
+# "staging" is the identity the public-demo Helm config (CronJob reset,
+# tighter rate limit) is wired to — see infra/helm/agentforge/values-staging.yaml.
+# Sized as cheaply as dev below since a spin-up/demo/teardown session
+# doesn't need more capacity than that; bump the node/DB sizing up only if
+# you're leaving it running continuously.
 
 environment = "staging"
 aws_region  = "us-east-1"
@@ -14,23 +16,29 @@ single_nat_gateway = true
 
 eks_cluster_version    = "1.30"
 eks_node_instance_types = ["t3.medium"]
-eks_node_desired_size  = 2
+eks_node_desired_size  = 1
 eks_node_min_size      = 1
-eks_node_max_size      = 4
+eks_node_max_size      = 2
 
-rds_instance_class       = "db.t4g.small"
-rds_allocated_storage_gb = 50
+rds_instance_class       = "db.t4g.micro"
+rds_allocated_storage_gb = 20
 rds_engine_version       = "16.4"
 rds_multi_az             = false
 
-redis_node_type       = "cache.t4g.small"
+redis_node_type       = "cache.t4g.micro"
 redis_num_cache_nodes = 1
 
 create_state_bucket = false
 
-# Placeholder — matches infra/helm/agentforge/values-staging.yaml's ingress.host.
-# Substitute a real owned domain, then flip enable_tls on, before applying.
+# No custom domain yet — enable_ingress alone gets a real public
+# http://<alb-hostname> URL (the AWS Load Balancer Controller's IRSA
+# role), without needing Route53/ACM/a domain at all. Flip enable_tls on
+# later once you own a domain (see docs/deployment-runbook.md) — it also
+# needs enable_ingress = true, since TLS terminates on the same ALB.
+enable_ingress      = true
 enable_tls          = false
 domain_name         = "staging.agentforge.example.com"
 create_route53_zone = true
-enable_waf          = false
+# WAF doesn't need a domain either — real protection for a
+# public-URL demo at negligible cost for a short session.
+enable_waf          = true

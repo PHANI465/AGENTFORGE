@@ -138,6 +138,7 @@ services:
   # (dashboard calls it directly for signup/login; OAuth providers redirect
   # the browser to it) unlike agent-runtime/eval-service/trace-collector.
   auth-service:
+    enabled: true
     port: 8004
     replicas: 2
     image: auth-service

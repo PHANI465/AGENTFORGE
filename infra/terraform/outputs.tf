@@ -38,8 +38,8 @@ output "acm_certificate_arn" {
 }
 
 output "lb_controller_irsa_role_arn" {
-  description = "Only set when enable_tls = true. Feed this into the aws-load-balancer-controller Helm install's serviceAccount.annotations."
-  value       = var.enable_tls ? module.lb_controller_irsa[0].role_arn : null
+  description = "Only set when enable_ingress = true. Feed this into the aws-load-balancer-controller Helm install's serviceAccount.annotations."
+  value       = var.enable_ingress ? module.lb_controller_irsa[0].role_arn : null
 }
 
 output "external_dns_irsa_role_arn" {
