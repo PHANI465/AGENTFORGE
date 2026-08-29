@@ -16,6 +16,14 @@ externalConfig:
   redisUrl: ""
   openaiApiKey: ""
   encryptionMasterKey: ""
+  # auth-service (Phase 3.3)
+  authPostgresDsn: ""
+  authSigningKeyPem: ""
+  oauthStateSecret: ""
+  githubClientId: ""
+  githubClientSecret: ""
+  googleClientId: ""
+  googleClientSecret: ""
 
 # Periodic wipe-and-reseed of the fixed-ID public demo dataset — see
 # docs/deployment-runbook.md and scripts/seed.py's --reset flag. Off by
@@ -124,3 +132,33 @@ services:
       limits: { cpu: 200m, memory: 128Mi }
     env: {}
     secretEnv: []
+
+  # Phase 3.3 — signup/login/OAuth/session tokens. Needs public exposure
+  # (dashboard calls it directly for signup/login; OAuth providers redirect
+  # the browser to it) unlike agent-runtime/eval-service/trace-collector.
+  auth-service:
+    port: 8004
+    replicas: 2
+    image: auth-service
+    ingressPath: /auth
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { cpu: 200m, memory: 128Mi }
+    env:
+      OAUTH_REDIRECT_BASE_URL: ""
+      DASHBOARD_URL: ""
+    secretEnv:
+      [
+        AUTH_POSTGRES_DSN,
+        AUTH_SIGNING_KEY_PEM,
+        OAUTH_STATE_SECRET,
+        GITHUB_CLIENT_ID,
+        GITHUB_CLIENT_SECRET,
+        GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET,
+      ]

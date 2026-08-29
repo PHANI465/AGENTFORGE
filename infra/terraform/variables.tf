@@ -123,7 +123,7 @@ variable "redis_num_cache_nodes" {
 variable "ecr_repository_names" {
   description = "Names of the ECR repositories to create, one per deployable image."
   type        = list(string)
-  default     = ["api-gateway", "agent-runtime", "eval-service", "trace-collector", "dashboard"]
+  default     = ["api-gateway", "agent-runtime", "eval-service", "trace-collector", "auth-service", "dashboard"]
 }
 
 variable "create_state_bucket" {

@@ -41,3 +41,11 @@ services:
     replicas: 2
     autoscaling:
       enabled: true
+  auth-service:
+    replicas: 2
+    autoscaling:
+      minReplicas: 2
+      maxReplicas: 6
+    env:
+      OAUTH_REDIRECT_BASE_URL: "https://agentforge.example.com"
+      DASHBOARD_URL: "https://agentforge.example.com"

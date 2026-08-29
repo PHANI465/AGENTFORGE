@@ -72,6 +72,28 @@ jobs:
         working-directory: packages/cli-go
         run: go build ./...
 
+  auth-service-go:
+    name: Build + vet (auth-service)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: services/auth-service/go.sum
+
+      - name: Tidy + vet
+        working-directory: services/auth-service
+        run: |
+          go mod tidy
+          go vet ./...
+
+      - name: Build
+        working-directory: services/auth-service
+        run: go build ./...
+
   dashboard:
     name: Lint + build (dashboard)
     runs-on: ubuntu-latest
@@ -118,6 +140,24 @@ jobs:
           file: services/${{ matrix.service }}/Dockerfile
           push: false
           tags: agentforge/${{ matrix.service }}:ci
+
+  docker-build-auth-service:
+    name: Docker build (auth-service)
+    runs-on: ubuntu-latest
+    needs: [auth-service-go]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build auth-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/auth-service/Dockerfile
+          push: false
+          tags: agentforge/auth-service:ci
 
   docker-build-dashboard:
     name: Docker build (dashboard, production image)

@@ -38,3 +38,10 @@ services:
     replicas: 2
   dashboard:
     replicas: 1
+  auth-service:
+    env:
+      # No /auth suffix — the service itself registers routes under
+      # /auth/... to match what the Ingress forwards (see NewMux's comment
+      # in services/auth-service/internal/handlers/handlers.go).
+      OAUTH_REDIRECT_BASE_URL: "https://staging.agentforge.example.com"
+      DASHBOARD_URL: "https://staging.agentforge.example.com"
