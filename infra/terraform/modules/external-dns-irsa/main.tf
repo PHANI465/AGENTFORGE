@@ -16,25 +16,38 @@ resource "aws_iam_policy" "external_dns" {
   policy      = file("${path.module}/iam_policy.json")
 }
 
-resource "aws_iam_role" "external_dns" {
-  name = "agentforge-${var.environment}-external-dns"
+# Built with aws_iam_policy_document rather than a raw jsonencode map — see
+# the matching comment in modules/lb-controller-irsa/main.tf: on a first
+# apply var.oidc_provider_url is unknown until the EKS cluster exists, and
+# jsonencode's map keys must be known at plan time, which a literal
+# "${var.oidc_provider_url}:sub" key is not.
+data "aws_iam_policy_document" "external_dns_assume_role" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Federated = var.oidc_provider_arn
-      }
-      Action = "sts:AssumeRoleWithWebIdentity"
-      Condition = {
-        StringEquals = {
-          "${var.oidc_provider_url}:sub" = "system:serviceaccount:${var.namespace}:${var.service_account_name}"
-          "${var.oidc_provider_url}:aud" = "sts.amazonaws.com"
-        }
-      }
-    }]
-  })
+    principals {
+      type        = "Federated"
+      identifiers = [var.oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:sub"
+      values   = ["system:serviceaccount:${var.namespace}:${var.service_account_name}"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "external_dns" {
+  name               = "agentforge-${var.environment}-external-dns"
+  assume_role_policy = data.aws_iam_policy_document.external_dns_assume_role.json
 
   tags = {
     Name = "agentforge-${var.environment}-external-dns"
