@@ -39,6 +39,31 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
 
+      # TEMPORARY — debugging a persistent "Not authorized to perform
+      # sts:AssumeRoleWithWebIdentity" error. Prints the exact claims GitHub
+      # puts in the OIDC token so we can compare against the IAM trust
+      # policy instead of guessing. Remove once the real cause is found.
+      - name: Debug OIDC token claims
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
+        run: |
+          python3 - <<'EOF'
+          import os, json, base64, urllib.request
+
+          url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=sts.amazonaws.com"
+          req_token = os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
+          req = urllib.request.Request(url, headers={"Authorization": f"bearer {req_token}"})
+          with urllib.request.urlopen(req) as resp:
+              jwt = json.load(resp)["value"]
+
+          payload = jwt.split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          keys = ("sub", "aud", "iss", "repository", "repository_owner", "ref", "job_workflow_ref")
+          print(json.dumps({k: claims[k] for k in keys if k in claims}, indent=2))
+          EOF
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
