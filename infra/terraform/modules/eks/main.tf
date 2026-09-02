@@ -18,7 +18,7 @@ resource "aws_iam_role_policy_attachment" "cluster_policy" {
 
 resource "aws_security_group" "cluster" {
   name        = "agentforge-${var.environment}-eks-cluster-sg"
-  description = "Control plane <-> node communication for the AgentForge EKS cluster"
+  description = "Control plane to node communication for the AgentForge EKS cluster"
   vpc_id      = var.vpc_id
 
   egress {
