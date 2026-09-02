@@ -61,29 +61,6 @@ jobs:
         # the .example file to match before running this.
         run: terraform plan -var-file="envs/${{ inputs.environment }}.tfvars.example" -out=tfplan
 
-      # TEMPORARY — the human-readable plan above is failing with "Invalid
-      # template interpolation value" but isn't showing a clear file/line
-      # for it. -json mode always includes a "range" (file, line, column)
-      # for every diagnostic, so use that to pinpoint the actual source
-      # instead of guessing from the folded log. Remove once found.
-      - name: Debug plan diagnostics (JSON)
-        if: failure()
-        working-directory: infra/terraform
-        env:
-          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-        run: |
-          terraform plan -var-file="envs/${{ inputs.environment }}.tfvars.example" -json 2>&1 \
-            | python3 -c "
-          import json, sys
-          for line in sys.stdin:
-              try:
-                  msg = json.loads(line)
-              except json.JSONDecodeError:
-                  continue
-              if msg.get('type') == 'diagnostic' and msg.get('diagnostic', {}).get('severity') == 'error':
-                  print(json.dumps(msg['diagnostic'], indent=2))
-          "
-
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-${{ inputs.environment }}
