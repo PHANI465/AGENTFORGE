@@ -90,6 +90,17 @@ jobs:
           go mod tidy
           go vet ./...
 
+      # TEMPORARY — go.mod also needed updating alongside go.sum (missed
+      # last time; only go.sum got copied back). Print both so nothing's
+      # missed this round. Remove once committed.
+      - name: Print corrected go.mod and go.sum
+        working-directory: services/auth-service
+        run: |
+          echo "=== go.mod ==="
+          cat go.mod
+          echo "=== go.sum ==="
+          cat go.sum
+
       - name: Build
         working-directory: services/auth-service
         run: go build ./...
