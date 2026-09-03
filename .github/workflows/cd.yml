@@ -158,7 +158,9 @@ jobs:
       # below. Each step is skipped entirely if its secret is unset, so
       # this is a no-op until an environment actually turns that flag on.
       - name: Install AWS Load Balancer Controller
-        if: vars.DEPLOY_TO_AWS == 'true' && secrets.LB_CONTROLLER_ROLE_ARN != ''
+        if: vars.DEPLOY_TO_AWS == 'true' && env.LB_CONTROLLER_ROLE_ARN != ''
+        env:
+          LB_CONTROLLER_ROLE_ARN: ${{ secrets.LB_CONTROLLER_ROLE_ARN }}
         run: |
           helm repo add eks https://aws.github.io/eks-charts
           helm repo update
@@ -169,7 +171,9 @@ jobs:
             --wait --timeout 5m
 
       - name: Install external-dns
-        if: vars.DEPLOY_TO_AWS == 'true' && secrets.EXTERNAL_DNS_ROLE_ARN != ''
+        if: vars.DEPLOY_TO_AWS == 'true' && env.EXTERNAL_DNS_ROLE_ARN != ''
+        env:
+          EXTERNAL_DNS_ROLE_ARN: ${{ secrets.EXTERNAL_DNS_ROLE_ARN }}
         run: |
           helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
           helm repo update
