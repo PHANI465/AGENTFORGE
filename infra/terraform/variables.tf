@@ -37,9 +37,9 @@ variable "single_nat_gateway" {
 }
 
 variable "eks_cluster_version" {
-  description = "Kubernetes version for the EKS control plane."
+  description = "Kubernetes version for the EKS control plane. 1.30 is no longer offered for new cluster creation as of 2026-09 — confirmed live via `aws eks describe-cluster --query cluster.version` after AWS silently created a cluster on 1.31 despite this defaulting to 1.30 at the time."
   type        = string
-  default     = "1.30"
+  default     = "1.31"
 }
 
 variable "eks_node_instance_types" {

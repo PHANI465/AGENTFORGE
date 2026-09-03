@@ -14,6 +14,13 @@ vpc_cidr           = "10.1.0.0/16"
 az_count           = 2
 single_nat_gateway = true
 
+# 1.31, not 1.30: EKS 1.30 is no longer offered for *new* cluster
+# creation — AWS silently created this cluster on 1.31 instead when
+# first applied, and every apply since then kept trying to "fix" that
+# back to 1.30, which EKS rejects as an unsupported downgrade (confirmed
+# live version via `aws eks describe-cluster --name agentforge-staging
+# --query cluster.version` in CloudShell). Match reality instead.
+#
 # t3.small, not t3.medium: this AWS account currently has a new-account
 # restriction blocking any EC2 launch outside its Free-Tier-eligible list
 # (confirmed via `aws ec2 describe-instance-types --filters
@@ -22,7 +29,7 @@ single_nat_gateway = true
 # both raised to 2 to compensate: the ~2.06Gi of pod memory requests
 # across staging's replica counts (values-staging.yaml) don't fit on a
 # single t3.small (2GB, ~1.7GB allocatable) but do across two.
-eks_cluster_version    = "1.30"
+eks_cluster_version    = "1.31"
 eks_node_instance_types = ["t3.small"]
 eks_node_desired_size  = 2
 eks_node_min_size      = 2
