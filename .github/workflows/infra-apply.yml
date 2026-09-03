@@ -13,9 +13,11 @@ name: Infra Apply
 #
 # `bootstrap_state`: check this ONLY for an environment's very first-ever
 # run, with create_state_bucket = true in that environment's tfvars. It
-# creates just the S3 bucket + DynamoDB lock table (module.s3) using local
-# state (-backend=false — the bucket doesn't exist yet, so the S3 backend
-# can't be initialized against it). Once that succeeds, set
+# creates just the S3 bucket + DynamoDB lock table (module.s3) using pure
+# local state — the backend block gets stripped from versions.tf for this
+# run only (sed, below), since the bucket doesn't exist yet and a fresh
+# directory can't partially-initialize against a backend that isn't there.
+# Once that succeeds, set
 # create_state_bucket back to false in the tfvars (the bucket becomes an
 # out-of-band backend target from here on, not something this state
 # tracks — leaving it true would make the next normal apply try to
@@ -61,10 +63,21 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
+      # -backend=false only reuses an already-initialized local directory —
+      # it doesn't fully initialize a *fresh* one when the config declares
+      # a backend block, which just fails plan/apply right after with
+      # "Backend initialization required". A genuinely absent backend
+      # block is the only reliable way to get pure local state on a first
+      # bootstrap run, so strip it from this checkout before init.
+      - name: Disable backend block for bootstrap run
+        if: inputs.bootstrap_state == true
+        working-directory: infra/terraform
+        run: sed -i '/backend "s3" {}/d' versions.tf
+
       - name: terraform init (bootstrap — local state)
         if: inputs.bootstrap_state == true
         working-directory: infra/terraform
-        run: terraform init -backend=false
+        run: terraform init
 
       - name: terraform init (real S3 backend)
         if: inputs.bootstrap_state == false
@@ -118,10 +131,15 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
+      - name: Disable backend block for bootstrap run
+        if: inputs.bootstrap_state == true
+        working-directory: infra/terraform
+        run: sed -i '/backend "s3" {}/d' versions.tf
+
       - name: terraform init (bootstrap — local state)
         if: inputs.bootstrap_state == true
         working-directory: infra/terraform
-        run: terraform init -backend=false
+        run: terraform init
 
       - name: terraform init (real S3 backend)
         if: inputs.bootstrap_state == false
