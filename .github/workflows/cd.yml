@@ -52,6 +52,11 @@ jobs:
           - service: dashboard
             dockerfile: dashboard/Dockerfile.prod
             context: dashboard
+            # Empty base URL = same-origin relative requests. The dashboard
+            # (/) and api-gateway (/api) share one ALB hostname in the
+            # no-domain demo, so the browser should hit /api/v1/... on its
+            # own origin rather than the localhost default Vite bakes in.
+            build_args: VITE_API_BASE_URL=
 
     steps:
       - uses: actions/checkout@v4
@@ -79,6 +84,7 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: true
+          build-args: ${{ matrix.build_args }}
           tags: |
             ghcr.io/${{ steps.owner.outputs.lc }}/agentforge-${{ matrix.service }}:latest
             ghcr.io/${{ steps.owner.outputs.lc }}/agentforge-${{ matrix.service }}:sha-${{ github.sha }}
@@ -110,6 +116,9 @@ jobs:
           - service: dashboard
             dockerfile: dashboard/Dockerfile.prod
             context: dashboard
+            # See the matching comment in push-ghcr — same-origin relative
+            # API base URL for the shared-ALB no-domain demo.
+            build_args: VITE_API_BASE_URL=
 
     steps:
       - uses: actions/checkout@v4
@@ -130,6 +139,7 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: true
+          build-args: ${{ matrix.build_args }}
           tags: |
             ${{ steps.ecr.outputs.registry }}/agentforge/${{ matrix.service }}:latest
             ${{ steps.ecr.outputs.registry }}/agentforge/${{ matrix.service }}:sha-${{ github.sha }}
