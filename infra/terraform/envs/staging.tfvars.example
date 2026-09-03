@@ -34,6 +34,12 @@ eks_node_instance_types = ["t3.small"]
 eks_node_desired_size  = 2
 eks_node_min_size      = 2
 eks_node_max_size      = 2
+# Grants kubectl/console access to the account root — this cluster only
+# trusted the GitHub Actions OIDC role by default, so `kubectl get pods`
+# from anywhere else (CloudShell, your own machine) failed with "you
+# must be logged in to the server" until this was added. Swap for a
+# scoped IAM user/role ARN instead of root once one exists.
+eks_admin_principal_arns = ["arn:aws:iam::786644102612:root"]
 
 rds_instance_class       = "db.t4g.micro"
 rds_allocated_storage_gb = 20

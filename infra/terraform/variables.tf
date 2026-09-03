@@ -66,6 +66,12 @@ variable "eks_node_max_size" {
   default     = 4
 }
 
+variable "eks_admin_principal_arns" {
+  description = "IAM principal ARNs granted cluster-admin via an EKS access entry, on top of whatever principal actually runs terraform apply (GitHub Actions' OIDC role gets this automatically). Add your own AWS identity here if you need to run kubectl yourself — e.g. an IAM user/role ARN, or the account root ARN from `aws sts get-caller-identity`."
+  type        = list(string)
+  default     = []
+}
+
 variable "rds_instance_class" {
   description = "RDS instance class for the Postgres primary."
   type        = string

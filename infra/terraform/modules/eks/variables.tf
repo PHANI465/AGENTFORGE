@@ -33,3 +33,9 @@ variable "node_min_size" {
 variable "node_max_size" {
   type = number
 }
+
+variable "admin_principal_arns" {
+  description = "IAM principal ARNs (users/roles) granted cluster-admin via an EKS access entry, in addition to whatever principal actually creates the cluster (GitHub Actions' OIDC role, which EKS grants automatically). Needed to run kubectl from anywhere else — e.g. your own AWS Console/CloudShell identity."
+  type        = list(string)
+  default     = []
+}

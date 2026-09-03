@@ -45,10 +45,37 @@ resource "aws_eks_cluster" "this" {
     endpoint_public_access  = true
   }
 
+  # API access entries (below) need this — CONFIG_MAP-only clusters can't
+  # use them at all. bootstrap_cluster_creator_admin_permissions grants
+  # cluster-admin to whichever principal actually runs this apply (the
+  # GitHub Actions OIDC role) automatically; var.admin_principal_arns
+  # below is for everyone else who needs kubectl access.
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+
   depends_on = [aws_iam_role_policy_attachment.cluster_policy]
 
   tags = {
     Name = "agentforge-${var.environment}"
+  }
+}
+
+resource "aws_eks_access_entry" "admin" {
+  for_each      = toset(var.admin_principal_arns)
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = each.value
+}
+
+resource "aws_eks_access_policy_association" "admin" {
+  for_each      = toset(var.admin_principal_arns)
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = each.value
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
   }
 }
 
