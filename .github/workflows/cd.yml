@@ -204,17 +204,44 @@ jobs:
             --set txtOwnerId=agentforge-${{ vars.DEPLOY_ENVIRONMENT || 'staging' }} \
             --wait --timeout 5m
 
+      # The LB controller install above may have just (re)generated its
+      # admission webhook's self-signed serving cert, and there's a brief
+      # window where the ValidatingWebhookConfiguration's caBundle doesn't
+      # yet match it — an Ingress apply that lands in that window fails with
+      # "x509: certificate signed by unknown authority ...
+      # aws-load-balancer-controller-ca". Wait for the controller rollout
+      # to fully settle, then retry the deploy a few times to ride out any
+      # residual skew rather than failing the whole run on a transient race.
+      - name: Wait for LB controller webhook to settle
+        if: vars.DEPLOY_TO_AWS == 'true' && env.LB_CONTROLLER_ROLE_ARN != ''
+        env:
+          LB_CONTROLLER_ROLE_ARN: ${{ secrets.LB_CONTROLLER_ROLE_ARN }}
+        run: |
+          kubectl -n kube-system rollout status deployment/aws-load-balancer-controller --timeout=3m
+
       - name: Deploy
         working-directory: infra/helm/agentforge
         run: |
-          helm upgrade --install agentforge . \
-            -f values.yaml -f values-${{ vars.DEPLOY_ENVIRONMENT || 'staging' }}.yaml \
-            --set-string global.imageRegistry=${{ steps.ecr.outputs.registry }}/agentforge \
-            --set-string global.imageTag=sha-${{ github.sha }} \
-            --set-string externalConfig.postgresDsn=${{ secrets.POSTGRES_DSN }} \
-            --set-string externalConfig.redisUrl=${{ secrets.REDIS_URL }} \
-            --set-string externalConfig.openaiApiKey=${{ secrets.OPENAI_API_KEY }} \
-            --set-string externalConfig.encryptionMasterKey=${{ secrets.ENCRYPTION_MASTER_KEY }} \
-            --set-string ingress.annotations."alb\.ingress\.kubernetes\.io/certificate-arn"=${{ secrets.ACM_CERTIFICATE_ARN }} \
-            --set-string ingress.annotations."alb\.ingress\.kubernetes\.io/wafv2-acl-arn"=${{ secrets.WAF_WEB_ACL_ARN }} \
-            --wait --timeout 5m
+          for attempt in 1 2 3 4 5; do
+            echo "::group::helm upgrade attempt $attempt"
+            if helm upgrade --install agentforge . \
+              -f values.yaml -f values-${{ vars.DEPLOY_ENVIRONMENT || 'staging' }}.yaml \
+              --set-string global.imageRegistry=${{ steps.ecr.outputs.registry }}/agentforge \
+              --set-string global.imageTag=sha-${{ github.sha }} \
+              --set-string externalConfig.postgresDsn=${{ secrets.POSTGRES_DSN }} \
+              --set-string externalConfig.redisUrl=${{ secrets.REDIS_URL }} \
+              --set-string externalConfig.openaiApiKey=${{ secrets.OPENAI_API_KEY }} \
+              --set-string externalConfig.encryptionMasterKey=${{ secrets.ENCRYPTION_MASTER_KEY }} \
+              --set-string ingress.annotations."alb\.ingress\.kubernetes\.io/certificate-arn"=${{ secrets.ACM_CERTIFICATE_ARN }} \
+              --set-string ingress.annotations."alb\.ingress\.kubernetes\.io/wafv2-acl-arn"=${{ secrets.WAF_WEB_ACL_ARN }} \
+              --wait --timeout 5m; then
+              echo "::endgroup::"
+              echo "Deploy succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "Attempt $attempt failed; the LB controller webhook cert may still be settling — retrying in 20s"
+            sleep 20
+          done
+          echo "Deploy still failing after 5 attempts"
+          exit 1
