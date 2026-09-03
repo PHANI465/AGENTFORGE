@@ -99,6 +99,9 @@ resource "aws_eks_node_group" "default" {
   node_role_arn   = aws_iam_role.node_group.arn
   subnet_ids      = var.private_subnet_ids
   instance_types  = var.node_instance_types
+  # AL2 (the provider's default) is no longer published for newer
+  # Kubernetes versions' managed node groups — AL2023 is its replacement.
+  ami_type = "AL2023_x86_64_STANDARD"
 
   scaling_config {
     desired_size = var.node_desired_size
