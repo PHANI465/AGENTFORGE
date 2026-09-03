@@ -28,11 +28,13 @@ rds_multi_az             = false
 redis_node_type       = "cache.t4g.micro"
 redis_num_cache_nodes = 1
 
-# Bootstrap-only: true just for this environment's first-ever run (with
-# infra-apply.yml's bootstrap_state input checked), to create the S3
-# bucket + DynamoDB lock table the backend then points at. Flip back to
-# false right after that run succeeds — see docs/deployment-runbook.md.
-create_state_bucket = true
+# Bootstrap already done for staging (2026-09-02) — the S3 bucket +
+# DynamoDB lock table exist and the backend points at them (versions.tf).
+# Leave this false: the bucket is an out-of-band backend target now, not
+# a resource this state tracks. See "Bootstrapping state for a new
+# environment" in docs/deployment-runbook.md before reusing this pattern
+# for dev/prod.
+create_state_bucket = false
 
 # No custom domain yet — enable_ingress alone gets a real public
 # http://<alb-hostname> URL (the AWS Load Balancer Controller's IRSA
