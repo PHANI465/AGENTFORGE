@@ -90,14 +90,6 @@ jobs:
           go mod tidy
           go vet ./...
 
-      # TEMPORARY — go.sum committed to the repo is missing entries this
-      # job's own `go mod tidy` silently fills in on its own ephemeral
-      # checkout, never persisted. Print the corrected file so it can be
-      # copied back into the real committed go.sum. Remove once done.
-      - name: Print corrected go.sum
-        working-directory: services/auth-service
-        run: cat go.sum
-
       - name: Build
         working-directory: services/auth-service
         run: go build ./...
