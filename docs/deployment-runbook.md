@@ -121,6 +121,11 @@ resources.
    - `lb_controller_irsa_role_arn` → `LB_CONTROLLER_ROLE_ARN`
    - `external_dns_irsa_role_arn` → `EXTERNAL_DNS_ROLE_ARN`
    - `waf_web_acl_arn` → `WAF_WEB_ACL_ARN` (only set if `enable_waf = true`)
+   - `vpc_id` → `VPC_ID` — always set this alongside `LB_CONTROLLER_ROLE_ARN`.
+     Without it the controller falls back to discovering its VPC via EC2
+     instance metadata from inside its own pod, which fails outright
+     (`CrashLoopBackOff`, "failed to fetch VPC ID from instance metadata")
+     unless the node group's metadata hop limit is separately raised to 2.
 5. **If `create_route53_zone = true`** (the default), `terraform output
    route53_name_servers` prints the NS records Route53 assigned. Add
    those as NS records at your domain registrar — until you do, the

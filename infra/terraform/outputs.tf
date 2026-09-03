@@ -15,6 +15,11 @@ output "ecr_repository_urls" {
   value = module.ecr.repository_urls
 }
 
+output "vpc_id" {
+  description = "Feed this into the aws-load-balancer-controller Helm install's --set vpcId=. Without it, the controller falls back to discovering the VPC via EC2 instance metadata from inside its own pod, which fails outright unless the node group's metadata hop limit is explicitly raised to 2 — simpler to just tell it directly."
+  value       = module.vpc.vpc_id
+}
+
 output "rds_endpoint" {
   value = module.rds.endpoint
 }
