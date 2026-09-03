@@ -1,8 +1,13 @@
 resource "aws_ecr_repository" "this" {
   for_each = toset(var.repository_names)
 
-  name                 = "agentforge/${each.value}"
-  image_tag_mutability = "IMMUTABLE"
+  name = "agentforge/${each.value}"
+  # MUTABLE, not IMMUTABLE: cd.yml pushes both a unique sha-<commit> tag
+  # and a floating :latest on every deploy, and immutable repos reject
+  # any second push to a tag that already exists — every deploy after
+  # the first would fail pushing :latest. The sha- tags already give a
+  # real immutable audit trail per build; :latest just needs to move.
+  image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true
