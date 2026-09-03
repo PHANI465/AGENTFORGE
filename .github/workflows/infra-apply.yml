@@ -10,6 +10,18 @@ name: Infra Apply
 # environment has required reviewers configured (Settings → Environments) —
 # add yourself as a reviewer on "infra-prod" (and "infra-staging" if you
 # want the same gate there) before the first real apply.
+#
+# `bootstrap_state`: check this ONLY for an environment's very first-ever
+# run, with create_state_bucket = true in that environment's tfvars. It
+# creates just the S3 bucket + DynamoDB lock table (module.s3) using local
+# state (-backend=false — the bucket doesn't exist yet, so the S3 backend
+# can't be initialized against it). Once that succeeds, set
+# create_state_bucket back to false in the tfvars (the bucket becomes an
+# out-of-band backend target from here on, not something this state
+# tracks — leaving it true would make the next normal apply try to
+# recreate a bucket that already exists) and run again with
+# bootstrap_state unchecked, which initializes the real S3 backend and
+# applies everything else with state that actually persists across runs.
 
 on:
   workflow_dispatch:
@@ -21,6 +33,11 @@ on:
         options: [dev, staging, prod]
       apply:
         description: "Actually apply (unchecked = plan only)"
+        required: true
+        type: boolean
+        default: false
+      bootstrap_state:
+        description: "First-ever run for this environment only: create just the state bucket/lock table (see comment above)"
         required: true
         type: boolean
         default: false
@@ -44,9 +61,20 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
-      - name: terraform init
+      - name: terraform init (bootstrap — local state)
+        if: inputs.bootstrap_state == true
         working-directory: infra/terraform
-        run: terraform init
+        run: terraform init -backend=false
+
+      - name: terraform init (real S3 backend)
+        if: inputs.bootstrap_state == false
+        working-directory: infra/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=agentforge-${{ inputs.environment }}-terraform-state" \
+            -backend-config="key=${{ inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION || 'us-east-1' }}" \
+            -backend-config="dynamodb_table=agentforge-${{ inputs.environment }}-terraform-locks"
 
       - name: terraform plan
         working-directory: infra/terraform
@@ -59,7 +87,10 @@ jobs:
         # customized envs/<env>.tfvars locally beyond the example (e.g. a
         # real domain_name), apply from your machine instead, or update
         # the .example file to match before running this.
-        run: terraform plan -var-file="envs/${{ inputs.environment }}.tfvars.example" -out=tfplan
+        run: |
+          terraform plan -var-file="envs/${{ inputs.environment }}.tfvars.example" \
+            ${{ inputs.bootstrap_state == true && '-target=module.s3' || '' }} \
+            -out=tfplan
 
       - uses: actions/upload-artifact@v4
         with:
@@ -87,9 +118,20 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
-      - name: terraform init
+      - name: terraform init (bootstrap — local state)
+        if: inputs.bootstrap_state == true
         working-directory: infra/terraform
-        run: terraform init
+        run: terraform init -backend=false
+
+      - name: terraform init (real S3 backend)
+        if: inputs.bootstrap_state == false
+        working-directory: infra/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=agentforge-${{ inputs.environment }}-terraform-state" \
+            -backend-config="key=${{ inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION || 'us-east-1' }}" \
+            -backend-config="dynamodb_table=agentforge-${{ inputs.environment }}-terraform-locks"
 
       - uses: actions/download-artifact@v4
         with:

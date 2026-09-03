@@ -38,6 +38,40 @@ rest of this runbook once you own one — nothing above needs to be undone
 to do that; `enable_tls` and `auth-service.enabled` just get flipped on
 top of what's already live.
 
+## Bootstrapping state for a new environment (once per environment, before Step 1)
+
+Terraform's own state for this project lives in an S3 bucket + DynamoDB
+lock table (`modules/s3`), one pair per environment — but that bucket has
+to exist before the S3 backend (`versions.tf`) can be initialized against
+it, which is a real chicken-and-egg problem the first time any given
+environment (`dev`, `staging`, `prod`) is ever applied. Skip this section
+entirely for an environment that's already been bootstrapped once.
+
+1. In that environment's `envs/<env>.tfvars`, set `create_state_bucket =
+   true`.
+2. Run **Actions → Infra Apply → Run workflow** with `bootstrap_state`
+   checked (plan first, then apply, same review pattern as normal). This
+   creates *only* the S3 bucket + DynamoDB table (`-target=module.s3`),
+   using local, throwaway state (`-backend=false`) — there's nothing to
+   persist yet since the backend it would persist to doesn't exist until
+   this step finishes.
+3. Set `create_state_bucket` back to `false` in that environment's
+   `tfvars`. This matters: left `true`, the *next* normal apply would try
+   to create a bucket that already exists and fail. The bucket becomes an
+   out-of-band backend target from here on — not a resource this state
+   tracks — which is intentional and fine to leave as-is.
+4. From here on, run Infra Apply normally (`bootstrap_state` unchecked).
+   `terraform init` now configures the real S3 backend, and state
+   persists across every future CI run for that environment — no more
+   losing track of what a partially-failed apply already created.
+
+If you ever hit a failed apply against an environment that skipped this
+(state was local-only, now lost, and AWS may hold orphaned resources from
+whatever succeeded before the failure): reconcile or delete those
+resources by hand first, *then* bootstrap state before retrying — don't
+bootstrap on top of an unknown, possibly-inconsistent set of existing
+resources.
+
 ## Prerequisites (once, before any environment goes live)
 
 0. **`envs/*.tfvars` is gitignored** (same pattern as `.env`) — the

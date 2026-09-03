@@ -8,16 +8,13 @@ terraform {
     }
   }
 
-  # Remote state is intentionally not configured here — AWS Constraints in
-  # CLAUDE.md keep this project on a $0 budget with no always-on cloud
-  # resources, so there's no S3 bucket/DynamoDB table to point at yet.
-  # Uncomment and fill in once you provision one (see modules/s3):
-  #
-  # backend "s3" {
-  #   bucket         = "agentforge-terraform-state"
-  #   key            = "agentforge/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   dynamodb_table = "agentforge-terraform-locks"
-  #   encrypt        = true
-  # }
+  # Partial config on purpose — bucket/key/table differ per environment
+  # (modules/s3 provisions one bucket + lock table per environment) and a
+  # backend block can't reference a variable. infra-apply.yml's terraform
+  # init supplies the rest via -backend-config flags, derived from
+  # inputs.environment. See docs/deployment-runbook.md's "Bootstrapping
+  # state for a new environment" section before the first-ever apply
+  # against a given environment — that bucket has to exist before this
+  # backend can be initialized against it at all.
+  backend "s3" {}
 }
