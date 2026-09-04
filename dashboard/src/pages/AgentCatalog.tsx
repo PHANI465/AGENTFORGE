@@ -33,6 +33,46 @@ const BUILTIN_TOOLS = [
     description: "Returns the current UTC time.",
     parameters_schema: { type: "object", properties: {}, required: [] },
   },
+  {
+    name: "text_stats",
+    description: "Counts words, characters, sentences and lines in text.",
+    parameters_schema: {
+      type: "object",
+      properties: { text: { type: "string" } },
+      required: ["text"],
+    },
+  },
+  {
+    name: "count_occurrences",
+    description: "Counts how often a substring appears in a text.",
+    parameters_schema: {
+      type: "object",
+      properties: { text: { type: "string" }, substring: { type: "string" } },
+      required: ["text", "substring"],
+    },
+  },
+  {
+    name: "random_number",
+    description: "Returns a random integer between min and max.",
+    parameters_schema: {
+      type: "object",
+      properties: { min: { type: "integer" }, max: { type: "integer" } },
+      required: [],
+    },
+  },
+  {
+    name: "unit_convert",
+    description: "Converts length, mass or temperature units.",
+    parameters_schema: {
+      type: "object",
+      properties: {
+        value: { type: "number" },
+        from_unit: { type: "string" },
+        to_unit: { type: "string" },
+      },
+      required: ["value", "from_unit", "to_unit"],
+    },
+  },
 ]
 
 function CreateAgentForm({ onCreated }: { onCreated: () => void }) {
