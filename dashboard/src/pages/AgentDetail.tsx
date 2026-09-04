@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
-import { agentsApi, analyticsApi, runsApi } from "../api/client"
+import { agentsApi, analyticsApi, knowledgeApi, runsApi } from "../api/client"
 import { useApi } from "../lib/useApi"
 import {
   Button,
@@ -250,6 +250,92 @@ function ConfigEditor({
   )
 }
 
+function KnowledgeCard({ agentId }: { agentId: string }) {
+  const { data, loading, refetch } = useApi(() => knowledgeApi.get(agentId), [agentId])
+  const [source, setSource] = useState("")
+  const [text, setText] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!text.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      await knowledgeApi.add(agentId, source.trim() || "document", text.trim())
+      setSource("")
+      setText("")
+      refetch()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const clear = async () => {
+    if (!confirm("Clear this agent's knowledge base?")) return
+    setBusy(true)
+    try {
+      await knowledgeApi.clear(agentId)
+      refetch()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const info = data?.data
+  return (
+    <Card>
+      <div className="label mb-2 text-deck-300">Knowledge base (RAG)</div>
+      <p className="mb-4 text-xs leading-relaxed text-deck-400">
+        Paste reference text (docs, FAQs, policies). It's chunked and embedded;
+        the most relevant parts are pulled into the agent's context on every run,
+        so it can answer from <em>your</em> material — not just the model's memory.
+        Needs an OpenAI-compatible key for embeddings.
+      </p>
+
+      {info && info.chunk_count > 0 && (
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-deck-700 bg-deck-900/50 px-3 py-2">
+          <span className="text-xs text-deck-200">
+            <span className="font-mono text-signal">{info.chunk_count}</span> chunk
+            {info.chunk_count === 1 ? "" : "s"}
+            {info.sources.length > 0 && (
+              <span className="text-deck-500"> · {info.sources.join(", ")}</span>
+            )}
+          </span>
+          <button
+            onClick={clear}
+            disabled={busy}
+            className="font-mono text-[11px] uppercase tracking-wider text-deck-400 hover:text-danger"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      <form onSubmit={add} className="space-y-3">
+        <Field label="Source name (optional)">
+          <Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="e.g. product-faq" />
+        </Field>
+        <Field label="Text">
+          <Textarea
+            rows={4}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Paste documents, FAQs, policies…"
+          />
+        </Field>
+        {error && <ErrorState message={error} />}
+        <Button type="submit" disabled={busy || !text.trim()}>
+          {busy ? "Embedding…" : loading ? "Loading…" : "Add to knowledge base"}
+        </Button>
+      </form>
+    </Card>
+  )
+}
+
 export function AgentDetail() {
   const { agentId } = useParams<{ agentId: string }>()
   const navigate = useNavigate()
@@ -322,6 +408,7 @@ export function AgentDetail() {
               setRefreshKey((k) => k + 1)
             }}
           />
+          <KnowledgeCard agentId={agent.id} />
         </div>
         <div className="space-y-6">
           <CostSummary agentId={agent.id} />

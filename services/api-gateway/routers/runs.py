@@ -14,11 +14,13 @@ from agentforge_common.enums import RunStatus
 from agentforge_common.envelope import DataResponse, ListMeta, ListResponse
 from agentforge_common.exceptions import AgentForgeError, BudgetExceededError
 from agentforge_common.models import Run, RunCreate
-from agentforge_common.orm import ApiKeyORM
+from agentforge_common.orm import ApiKeyORM, KnowledgeChunkORM
 from agentforge_common.security import decrypt_key
 from dependencies import get_db, owner_id_of, require_api_key
 from fastapi import APIRouter, Depends, Query, Request
+from knowledge import embed_texts, top_k
 from rate_limit import RATE_LIMIT_DEFAULT, RATE_LIMIT_RUN, limiter
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/v1/agents", tags=["runs"])
@@ -69,8 +71,34 @@ async def run_agent(
     run_orm.status = RunStatus.RUNNING
     await session.flush()
 
+    # --- RAG: retrieve relevant knowledge and inject it into the prompt ---
+    # Best-effort: a retrieval hiccup (e.g. a non-OpenAI key can't embed)
+    # never fails the run — the agent just runs without extra context.
+    effective_system_prompt = agent.system_prompt
+    kb_rows = (
+        await session.execute(
+            select(KnowledgeChunkORM.content, KnowledgeChunkORM.embedding).where(
+                KnowledgeChunkORM.agent_id == agent.id,
+                KnowledgeChunkORM.owner_id == owner_id,
+            )
+        )
+    ).all()
+    if kb_rows:
+        try:
+            query_vec = (await embed_texts([payload.input], llm_api_key))[0]
+            relevant = top_k(query_vec, [(c, e) for c, e in kb_rows], k=3)
+            if relevant:
+                context = "\n\n---\n\n".join(relevant)
+                effective_system_prompt = (
+                    f"{agent.system_prompt}\n\n"
+                    "Reference material retrieved for this question — prefer it when "
+                    f"answering, and say so if it doesn't cover the question:\n\n{context}"
+                )
+        except Exception:
+            pass
+
     runtime_payload = {
-        "system_prompt": agent.system_prompt,
+        "system_prompt": effective_system_prompt,
         "user_input": payload.input,
         "model": agent.model,
         "tool_names": tool_names,

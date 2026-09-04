@@ -75,6 +75,25 @@ class AgentVersionORM(Base):
     agent: Mapped["AgentORM"] = relationship(back_populates="versions")
 
 
+class KnowledgeChunkORM(Base):
+    """One embedded chunk of an agent's knowledge base (RAG). Stored per agent;
+    the embedding is a plain JSON float array so we need no pgvector extension —
+    similarity is computed in Python, which is fine at demo/knowledge-base scale.
+    """
+
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), index=True
+    )
+    source: Mapped[str] = mapped_column(default="")
+    content: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class ApiKeyORM(Base):
     __tablename__ = "api_keys"
 

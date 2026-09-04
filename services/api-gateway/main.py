@@ -33,6 +33,7 @@ from routers.analytics import router as analytics_router
 from routers.api_keys import router as api_keys_router
 from routers.demo import router as demo_router
 from routers.evals import router as evals_router
+from routers.knowledge import router as knowledge_router
 from routers.runs import router as runs_router
 from routers.traces import router as traces_router
 from slowapi import _rate_limit_exceeded_handler
@@ -78,6 +79,7 @@ app.include_router(evals_router)
 app.include_router(analytics_router)
 app.include_router(api_keys_router)
 app.include_router(demo_router)
+app.include_router(knowledge_router)
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 

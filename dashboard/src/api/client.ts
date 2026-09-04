@@ -165,6 +165,24 @@ export const apiKeysApi = {
     request<void>(`/api/v1/api-keys/${id}`, { method: "DELETE" }),
 }
 
+// --- Knowledge base (RAG) ---
+export interface KnowledgeInfo {
+  chunk_count: number
+  sources: string[]
+}
+
+export const knowledgeApi = {
+  get: (agentId: string) =>
+    request<DataResponse<KnowledgeInfo>>(`/api/v1/agents/${agentId}/knowledge`),
+  add: (agentId: string, source: string, text: string) =>
+    request<DataResponse<KnowledgeInfo>>(`/api/v1/agents/${agentId}/knowledge`, {
+      method: "POST",
+      body: JSON.stringify({ source, text }),
+    }),
+  clear: (agentId: string) =>
+    request<void>(`/api/v1/agents/${agentId}/knowledge`, { method: "DELETE" }),
+}
+
 // --- Demo ---
 //
 // Only a public-demo deployment answers this (api-gateway returns 404
