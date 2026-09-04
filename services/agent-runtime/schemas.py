@@ -21,6 +21,8 @@ class ExecuteRequest(BaseModel):
     safety_rules: list[str] = Field(default_factory=list)
     on_violation: str = "log"
     optimization: TokenOptimizationConfig = Field(default_factory=TokenOptimizationConfig)
+    scope_mode: str = "off"
+    allowed_scope: str = ""
 
 
 class StepOut(BaseModel):

@@ -25,6 +25,8 @@ async def run_agent(req: ExecuteRequest) -> ExecuteResponse:
         safety_rules=req.safety_rules,
         on_violation=req.on_violation,
         optimization=req.optimization,
+        scope_mode=req.scope_mode,
+        allowed_scope=req.allowed_scope,
     )
     return ExecuteResponse(
         output=result.output,

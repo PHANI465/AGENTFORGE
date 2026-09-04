@@ -26,12 +26,20 @@ export interface TokenOptimizationConfig {
   daily_budget_usd: number | null
 }
 
+export type ScopeGuardMode = "off" | "warn" | "block"
+
+export interface ScopeGuard {
+  mode: ScopeGuardMode
+  allowed_scope: string
+}
+
 export interface AgentConfig {
   max_tokens: number
   temperature: number
   timeout: number
   retry_policy: Record<string, unknown> | null
   optimization: TokenOptimizationConfig
+  scope_guard?: ScopeGuard
 }
 
 export interface Agent {

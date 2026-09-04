@@ -17,6 +17,7 @@ from agentforge_common.enums import (
     RunStatus,
     RunStepType,
     SafetyViolationAction,
+    ScopeGuardMode,
 )
 
 
@@ -38,12 +39,22 @@ class TokenOptimizationConfig(BaseModel):
     daily_budget_usd: float | None = Field(default=None, ge=0.0, le=10_000.0)
 
 
+class ScopeGuard(BaseModel):
+    """Confines an agent to a described topic/scope. Enforced by a cheap
+    classifier call on the user's input before the agent runs — off by
+    default, so existing agents are unaffected."""
+
+    mode: ScopeGuardMode = ScopeGuardMode.OFF
+    allowed_scope: str = Field(default="", max_length=2000)
+
+
 class AgentConfig(BaseModel):
     max_tokens: int = Field(default=1024, ge=1, le=128_000)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     timeout: int = Field(default=30, ge=1, le=600)
     retry_policy: dict[str, Any] | None = None
     optimization: TokenOptimizationConfig = Field(default_factory=TokenOptimizationConfig)
+    scope_guard: ScopeGuard = Field(default_factory=ScopeGuard)
 
 
 class ToolSpec(BaseModel):

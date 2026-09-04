@@ -82,6 +82,8 @@ async def run_agent(
         "safety_rules": agent.safety_policy.rules,
         "on_violation": agent.safety_policy.on_violation.value,
         "optimization": agent.config.optimization.model_dump(),
+        "scope_mode": agent.config.scope_guard.mode.value,
+        "allowed_scope": agent.config.scope_guard.allowed_scope,
     }
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(agent.config.timeout + 10)) as client:

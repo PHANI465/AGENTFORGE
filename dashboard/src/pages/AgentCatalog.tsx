@@ -81,6 +81,8 @@ function CreateAgentForm({ onCreated }: { onCreated: () => void }) {
   const [model, setModel] = useState("gpt-4o-mini")
   const [prompt, setPrompt] = useState("You are a helpful assistant.")
   const [tools, setTools] = useState<string[]>([])
+  const [scopeMode, setScopeMode] = useState<"off" | "warn" | "block">("off")
+  const [allowedScope, setAllowedScope] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -100,10 +102,15 @@ function CreateAgentForm({ onCreated }: { onCreated: () => void }) {
         model,
         system_prompt: prompt,
         tools: BUILTIN_TOOLS.filter((t) => tools.includes(t.name)),
+        ...(scopeMode !== "off" && allowedScope.trim()
+          ? { config: { scope_guard: { mode: scopeMode, allowed_scope: allowedScope.trim() } } }
+          : {}),
       })
       setName("")
       setPrompt("You are a helpful assistant.")
       setTools([])
+      setScopeMode("off")
+      setAllowedScope("")
       setOpen(false)
       onCreated()
     } catch (err) {
@@ -147,11 +154,12 @@ function CreateAgentForm({ onCreated }: { onCreated: () => void }) {
         </Field>
         <div>
           <span className="label mb-2 block text-deck-300">Tools</span>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
             {BUILTIN_TOOLS.map((t) => (
               <label
                 key={t.name}
-                className="label flex cursor-pointer items-center gap-2 !text-[11px] !normal-case text-deck-200"
+                className="flex cursor-pointer items-center gap-2 font-mono text-[11px] text-deck-200"
+                title={t.description}
               >
                 <input
                   type="checkbox"
@@ -162,6 +170,28 @@ function CreateAgentForm({ onCreated }: { onCreated: () => void }) {
                 {t.name}
               </label>
             ))}
+          </div>
+        </div>
+        <div>
+          <span className="label mb-2 block text-deck-300">Topic scope guard</span>
+          <div className="grid grid-cols-3 gap-3">
+            <Select
+              value={scopeMode}
+              onChange={(e) => setScopeMode(e.target.value as "off" | "warn" | "block")}
+            >
+              <option value="off">Off — no restriction</option>
+              <option value="warn">Warn — answer but flag off-topic</option>
+              <option value="block">Block — refuse off-topic</option>
+            </Select>
+            {scopeMode !== "off" && (
+              <div className="col-span-2">
+                <Input
+                  value={allowedScope}
+                  onChange={(e) => setAllowedScope(e.target.value)}
+                  placeholder="Allowed scope, e.g. questions about AgentForge and AI agents"
+                />
+              </div>
+            )}
           </div>
         </div>
         {error && <ErrorState message={error} />}

@@ -27,6 +27,7 @@ from metrics import (
 from opentelemetry import trace
 from routing import pick_model
 from safety import CheckPoint, SafetyChecker
+from scope import classify_in_scope, refusal_message
 from tools import ToolRegistry
 from tracing import current_trace_id, tracer
 
@@ -73,6 +74,8 @@ async def execute_agent(
     safety_rules: list[str] | None = None,
     on_violation: str = "log",
     optimization: TokenOptimizationConfig | None = None,
+    scope_mode: str = "off",
+    allowed_scope: str = "",
 ) -> RunResult:
     """Run the think->act->observe loop with safety enforcement, tracing, and
     token-optimization (smart routing, response caching, prompt compression)."""
@@ -112,6 +115,29 @@ async def execute_agent(
         trace_id = current_trace_id()
         start = time.monotonic()
 
+        # --- SCOPE GUARD: classify the input before the agent runs ---
+        scope_step: StepRecord | None = None
+        if scope_mode != "off" and allowed_scope.strip():
+            with tracer.start_as_current_span(
+                "scope.check", attributes={"scope.mode": scope_mode}
+            ) as scope_span:
+                sr = await classify_in_scope(user_input, allowed_scope, effective_model, api_key)
+                scope_span.set_attribute("scope.in_scope", sr.in_scope)
+            blocked = (not sr.in_scope) and scope_mode == "block"
+            scope_step = StepRecord(
+                step_number=1, type="scope_check",
+                input={"allowed_scope": allowed_scope, "mode": scope_mode},
+                output={"in_scope": sr.in_scope, "action": "blocked" if blocked else "allowed"},
+                tokens_in=sr.tokens_in, tokens_out=sr.tokens_out, latency_ms=sr.latency_ms,
+            )
+            if blocked:
+                AGENT_RUN_DURATION.observe(time.monotonic() - start)
+                return RunResult(
+                    output=refusal_message(allowed_scope), steps=[scope_step],
+                    total_tokens_in=sr.tokens_in, total_tokens_out=sr.tokens_out,
+                    total_cost_usd=sr.cost_usd, model=effective_model, trace_id=trace_id,
+                )
+
         try:
             result = await asyncio.wait_for(
                 _loop(messages, effective_model, tools_for_llm, registry, api_key,
@@ -129,6 +155,16 @@ async def execute_agent(
             return RunResult(output="", model=effective_model, trace_id=trace_id, error=str(e))
         finally:
             AGENT_RUN_DURATION.observe(time.monotonic() - start)
+
+        # Prepend the (warn-mode / in-scope) scope-check step and fold its
+        # token/cost into the run totals so it shows in the trace + billing.
+        if scope_step is not None:
+            for s in result.steps:
+                s.step_number += 1
+            result.steps.insert(0, scope_step)
+            result.total_tokens_in += scope_step.tokens_in
+            result.total_tokens_out += scope_step.tokens_out
+            result.total_cost_usd += sr.cost_usd
 
         result.trace_id = trace_id
 
