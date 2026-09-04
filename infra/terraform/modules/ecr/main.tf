@@ -2,6 +2,12 @@ resource "aws_ecr_repository" "this" {
   for_each = toset(var.repository_names)
 
   name = "agentforge/${each.value}"
+  # Let `terraform destroy` remove the repo even though CI has pushed images
+  # into it — without this a teardown fails with RepositoryNotEmptyException
+  # and every repo has to be emptied by hand first. These are rebuildable
+  # build artifacts (CI repushes them on the next deploy), never source of
+  # truth, so deleting them with the environment is exactly what we want.
+  force_delete = true
   # MUTABLE, not IMMUTABLE: cd.yml pushes both a unique sha-<commit> tag
   # and a floating :latest on every deploy, and immutable repos reject
   # any second push to a tag that already exists — every deploy after

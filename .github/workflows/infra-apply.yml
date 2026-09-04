@@ -172,10 +172,17 @@ jobs:
           set +e
           aws eks update-kubeconfig --region ${{ vars.AWS_REGION || 'us-east-1' }} \
             --name agentforge-${{ inputs.environment }} || { echo "cluster unreachable — skipping k8s cleanup"; exit 0; }
+          # Order matters. Delete the Ingress FIRST, while the LB controller is
+          # still running — its finalizer on the Ingress blocks this delete
+          # until the ALB (and the ENIs it plants in the VPC subnets) is
+          # actually gone, so the --timeout is a real wait for teardown to
+          # finish. Only AFTER that do we remove the app and the controller.
+          # Doing `helm uninstall agentforge` first would delete the Ingress
+          # object without waiting, letting us tear down the controller before
+          # the ALB is gone — orphaning the ALB and leaving its ENIs holding a
+          # subnet, which then fails terraform destroy with DependencyViolation.
+          kubectl delete ingress --all -n default --ignore-not-found --timeout=8m || true
           helm uninstall agentforge -n default || true
-          # Blocks on the LB controller's Ingress finalizer until the ALB is
-          # actually deleted.
-          kubectl delete ingress --all -n default --ignore-not-found --timeout=5m || true
           helm uninstall aws-load-balancer-controller -n kube-system || true
           helm uninstall external-dns -n kube-system || true
 
