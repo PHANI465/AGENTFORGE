@@ -135,11 +135,11 @@ export function SignIn() {
     <div className="flex min-h-screen items-center justify-center px-6">
       <div className="w-full max-w-sm rise-in">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-sm border border-signal/40 bg-signal/10 text-signal">
-            <span className="font-display text-2xl italic">A</span>
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--color-signal),var(--color-pink))] shadow-[0_12px_30px_-8px_rgba(139,92,255,0.7)]">
+            <span className="font-display text-3xl font-extrabold text-white">A</span>
           </div>
-          <h1 className="font-display text-2xl text-deck-50">AgentForge</h1>
-          <p className="label mt-2 text-deck-400">authenticate to enter the deck</p>
+          <h1 className="font-display text-3xl text-deck-50">AgentForge</h1>
+          <p className="label mt-2 text-deck-400">build, run &amp; govern AI agents</p>
         </div>
 
         <Card className="space-y-5">

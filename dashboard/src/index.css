@@ -1,27 +1,38 @@
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Manrope:wght@400..700&family=JetBrains+Mono:wght@400..600&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Fraunces", "Iowan Old Style", serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-display: "Bricolage Grotesque", "Iowan Old Style", serif;
+  --font-body: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
 
-  --color-deck-950: #08090c;
-  --color-deck-900: #0d0f14;
-  --color-deck-850: #11141b;
-  --color-deck-800: #161a22;
-  --color-deck-700: #20252f;
-  --color-deck-600: #2c323f;
-  --color-deck-500: #3d4453;
-  --color-deck-300: #6b7280;
-  --color-deck-100: #c7cbd4;
-  --color-deck-50: #ece9e2;
+  /* Deep indigo canvas → elevated violet-tinted surfaces. Token NAMES are
+     kept from the old terminal theme so every existing text-deck-* /
+     bg-deck-* class across the app re-skins automatically; only the values
+     change (near-black terminal → rich indigo studio). */
+  --color-deck-950: #0b0a14;
+  --color-deck-900: #100e1c;
+  --color-deck-850: #151327;
+  --color-deck-800: #1b1830;
+  --color-deck-700: #2a2645;
+  --color-deck-600: #3b3660;
+  --color-deck-500: #565080;
+  --color-deck-300: #a49dcf;
+  --color-deck-100: #d8d3f2;
+  --color-deck-50: #f4f1ff;
 
-  --color-signal: #ff8a3d;
-  --color-signal-dim: #b8602a;
-  --color-cyan: #5eead4;
-  --color-lime: #b7e550;
-  --color-danger: #f2495c;
+  /* Vivid accents — used generously as gradients + glows, not timid dabs.
+     `signal` (the app's primary-accent token, formerly muted orange) is now
+     electric violet, so every prior text-signal/bg-signal turns vibrant. */
+  --color-signal: #8b5cff;
+  --color-signal-dim: #6d3ff0;
+  --color-cyan: #29d3ff;
+  --color-lime: #b6ff44;
+  --color-pink: #ff4d92;
+  --color-amber: #ffb020;
+  --color-danger: #ff4d6d;
 
-  --shadow-hud: 0 1px 0 0 rgba(255, 255, 255, 0.03) inset, 0 20px 40px -20px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 0 1px rgba(139, 92, 255, 0.15), 0 24px 60px -24px rgba(139, 92, 255, 0.35);
 }
 
 :root {
@@ -34,18 +45,20 @@ body {
   min-height: 100%;
   background: var(--color-deck-950);
   color: var(--color-deck-50);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 
+/* Colorful gradient-mesh atmosphere — violet, pink and cyan blooms drifting
+   over the deep base, plus a faint grain. Replaces the old orange grid. */
 body {
   position: relative;
   background-image:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255, 138, 61, 0.08), transparent),
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: auto, 48px 48px, 48px 48px;
-  background-position: 0 0, -1px -1px, -1px -1px;
+    radial-gradient(48% 38% at 12% 6%, rgba(139, 92, 255, 0.22), transparent 70%),
+    radial-gradient(42% 34% at 92% 4%, rgba(255, 77, 146, 0.16), transparent 70%),
+    radial-gradient(50% 45% at 88% 96%, rgba(41, 211, 255, 0.14), transparent 72%),
+    radial-gradient(40% 40% at 0% 100%, rgba(182, 255, 68, 0.08), transparent 70%);
+  background-attachment: fixed;
 }
 
 body::after {
@@ -54,9 +67,9 @@ body::after {
   inset: 0;
   pointer-events: none;
   z-index: 999;
-  opacity: 0.035;
+  opacity: 0.04;
   mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 h1,
@@ -64,50 +77,54 @@ h2,
 h3,
 .font-display {
   font-family: var(--font-display);
-  font-weight: 500;
-  letter-spacing: -0.01em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
+/* Uppercase micro-label — kept, but now mono + violet-leaning. */
 .label {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-deck-300);
 }
 
-/* HUD corner-bracket card: four L-shaped corner marks via layered gradients */
+/* Card: a rounded, gradient-surfaced panel with a soft top sheen. The class
+   name is unchanged (Card in ui.tsx uses it) but the look is now studio, not
+   HUD. A thin gradient hairline sits on top via ::before. */
 .hud-card {
   position: relative;
-  background: linear-gradient(180deg, var(--color-deck-850), var(--color-deck-900));
+  border-radius: 1.25rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 40%),
+    linear-gradient(180deg, var(--color-deck-850), var(--color-deck-900));
   border: 1px solid var(--color-deck-700);
-  box-shadow: var(--shadow-hud);
-}
-
-.hud-card::before,
-.hud-card::after {
-  content: "";
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  pointer-events: none;
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.04) inset, 0 20px 45px -28px rgba(0, 0, 0, 0.8);
+  transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
 }
 
 .hud-card::before {
-  top: -1px;
-  left: -1px;
-  border-top: 2px solid var(--color-signal);
-  border-left: 2px solid var(--color-signal);
-  opacity: 0.55;
+  content: "";
+  position: absolute;
+  inset-inline: 1.25rem;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(139, 92, 255, 0.6), rgba(41, 211, 255, 0.4), transparent);
+  opacity: 0.7;
 }
 
-.hud-card::after {
-  bottom: -1px;
-  right: -1px;
-  border-bottom: 2px solid var(--color-signal);
-  border-right: 2px solid var(--color-signal);
-  opacity: 0.55;
+/* Gradient text helper for big numbers / hero words. */
+.gradient-text {
+  background: linear-gradient(100deg, var(--color-signal), var(--color-pink) 55%, var(--color-cyan));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.glow-violet {
+  box-shadow: 0 10px 30px -10px rgba(139, 92, 255, 0.55);
 }
 
 .hud-scan {
@@ -116,22 +133,28 @@ h3,
 }
 
 .hud-scan::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
 }
 
 .hud-scan::-webkit-scrollbar-thumb {
   background: var(--color-deck-600);
-  border-radius: 4px;
+  border-radius: 5px;
+}
+
+.hud-scan::-webkit-scrollbar-thumb:hover {
+  background: var(--color-signal-dim);
 }
 
 @keyframes pulse-dot {
   0%,
   100% {
     opacity: 1;
+    box-shadow: 0 0 0 0 rgba(182, 255, 68, 0.5);
   }
   50% {
-    opacity: 0.35;
+    opacity: 0.5;
+    box-shadow: 0 0 0 5px rgba(182, 255, 68, 0);
   }
 }
 
@@ -142,7 +165,7 @@ h3,
 @keyframes rise-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -151,5 +174,10 @@ h3,
 }
 
 .rise-in {
-  animation: rise-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: rise-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+/* Staggered reveal helpers for lists/grids. */
+.rise-in-1 { animation: rise-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both; }
+.rise-in-2 { animation: rise-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both; }
+.rise-in-3 { animation: rise-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both; }
