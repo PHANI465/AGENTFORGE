@@ -28,9 +28,18 @@ ingress:
     # From `terraform output waf_web_acl_arn` (envs/staging.tfvars, enable_waf = true).
     alb.ingress.kubernetes.io/wafv2-acl-arn: ""
 
+# Single replicas + autoscaling off across the board: this demo runs on
+# 2× t3.small (the free-tier-eligible size this account is limited to),
+# which only has ~3GB allocatable total. The base chart's HPA minReplicas
+# of 2 for api-gateway/agent-runtime, plus rolling-update surge, overcommits
+# memory — a new agent-runtime pod (512Mi) couldn't schedule, the rollout
+# stalled, and `helm upgrade --wait` timed out. A demo needs no HA; one
+# replica each fits comfortably and rolls cleanly.
 services:
   api-gateway:
-    replicas: 2
+    replicas: 1
+    autoscaling:
+      enabled: false
     env:
       # Tighter than the platform default (10/minute) — this is the public
       # demo, funded by the platform's own key and already budget-capped
@@ -41,7 +50,9 @@ services:
       # cost-fairness one.
       RATE_LIMIT_RUN: "3/minute"
   agent-runtime:
-    replicas: 2
+    replicas: 1
+    autoscaling:
+      enabled: false
   dashboard:
     replicas: 1
   # Signup/login/OAuth need a real domain (OAuth provider redirect URIs

@@ -222,26 +222,33 @@ jobs:
       - name: Deploy
         working-directory: infra/helm/agentforge
         run: |
-          for attempt in 1 2 3 4 5; do
-            echo "::group::helm upgrade attempt $attempt"
-            if helm upgrade --install agentforge . \
-              -f values.yaml -f values-${{ vars.DEPLOY_ENVIRONMENT || 'staging' }}.yaml \
-              --set-string global.imageRegistry=${{ steps.ecr.outputs.registry }}/agentforge \
-              --set-string global.imageTag=sha-${{ github.sha }} \
-              --set-string externalConfig.postgresDsn=${{ secrets.POSTGRES_DSN }} \
-              --set-string externalConfig.redisUrl=${{ secrets.REDIS_URL }} \
-              --set-string externalConfig.openaiApiKey=${{ secrets.OPENAI_API_KEY }} \
-              --set-string externalConfig.encryptionMasterKey=${{ secrets.ENCRYPTION_MASTER_KEY }} \
-              --set-string ingress.annotations."alb\.ingress\.kubernetes\.io/certificate-arn"=${{ secrets.ACM_CERTIFICATE_ARN }} \
-              --set-string ingress.annotations."alb\.ingress\.kubernetes\.io/wafv2-acl-arn"=${{ secrets.WAF_WEB_ACL_ARN }} \
-              --wait --timeout 5m; then
-              echo "::endgroup::"
-              echo "Deploy succeeded on attempt $attempt"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "Attempt $attempt failed; the LB controller webhook cert may still be settling — retrying in 20s"
-            sleep 20
-          done
-          echo "Deploy still failing after 5 attempts"
-          exit 1
+          # A previous run whose `helm upgrade --wait` timed out can leave the
+          # release stuck in a pending-* state, which blocks the next upgrade
+          # with "another operation (install/upgrade/rollback) is in progress".
+          # Clear it before deploying: roll back to the last good revision, or
+          # if there isn't one, uninstall so --install starts clean.
+          status="$(helm status agentforge -n default -o json 2>/dev/null | grep -o '"status":"[a-z-]*"' | head -1 || true)"
+          echo "Current release status: ${status:-none}"
+          if echo "$status" | grep -q "pending"; then
+            echo "Release stuck in a pending state — clearing it before upgrade"
+            helm rollback agentforge -n default --wait --timeout 3m \
+              || helm uninstall agentforge -n default --wait --timeout 3m \
+              || true
+          fi
+
+          # Single attempt, no retry loop: a --wait timeout leaves the release
+          # locked, so blind retries just fail with "operation in progress"
+          # (they can't recover). --atomic instead rolls the release back
+          # cleanly on any failure, leaving a consistent state the next run
+          # can build on. 8m timeout gives image pulls room on small nodes.
+          helm upgrade --install agentforge . \
+            -f values.yaml -f values-${{ vars.DEPLOY_ENVIRONMENT || 'staging' }}.yaml \
+            --set-string global.imageRegistry=${{ steps.ecr.outputs.registry }}/agentforge \
+            --set-string global.imageTag=sha-${{ github.sha }} \
+            --set-string externalConfig.postgresDsn=${{ secrets.POSTGRES_DSN }} \
+            --set-string externalConfig.redisUrl=${{ secrets.REDIS_URL }} \
+            --set-string externalConfig.openaiApiKey=${{ secrets.OPENAI_API_KEY }} \
+            --set-string externalConfig.encryptionMasterKey=${{ secrets.ENCRYPTION_MASTER_KEY }} \
+            --set-string ingress.annotations."alb\.ingress\.kubernetes\.io/certificate-arn"=${{ secrets.ACM_CERTIFICATE_ARN }} \
+            --set-string ingress.annotations."alb\.ingress\.kubernetes\.io/wafv2-acl-arn"=${{ secrets.WAF_WEB_ACL_ARN }} \
+            --wait --timeout 8m --atomic
