@@ -11,6 +11,7 @@ import {
   Input,
   LoadingState,
   PageHeader,
+  Select,
 } from "../components/ui"
 import { formatDateTime } from "../lib/format"
 
@@ -121,32 +122,46 @@ function ApiKeys() {
   )
 }
 
+// Provider names route purely by the agent's model name via LiteLLM — the
+// stored `provider` is just a label for the user's own reference. Each entry
+// carries the key shape and an example model to type into an agent's Model
+// field so the run actually reaches that provider.
+const PROVIDERS = [
+  { id: "openai", name: "OpenAI", keyHint: "sk-…", model: "gpt-4o-mini" },
+  { id: "anthropic", name: "Anthropic (Claude)", keyHint: "sk-ant-…", model: "claude-3-5-sonnet-20241022" },
+  { id: "gemini", name: "Google (Gemini)", keyHint: "AIza…", model: "gemini/gemini-1.5-flash" },
+  { id: "groq", name: "Groq", keyHint: "gsk_…", model: "groq/llama-3.1-70b-versatile" },
+]
+
 function BringYourOwnKey() {
   const { signIn } = useAuth()
-  const [openaiKey, setOpenaiKey] = useState("")
+  const [providerId, setProviderId] = useState("openai")
+  const [llmKey, setLlmKey] = useState("")
   const [label, setLabel] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
+  const provider = PROVIDERS.find((p) => p.id === providerId) ?? PROVIDERS[0]
   const insecure = typeof window !== "undefined" && window.location.protocol === "http:"
 
   const activate = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!openaiKey.trim()) return
+    if (!llmKey.trim()) return
     setSaving(true)
     setError(null)
     try {
-      // Mint a new AgentForge key that carries this OpenAI key (encrypted
-      // server-side), then switch this session to it — from now on this
-      // browser's agent runs bill the user's own OpenAI account.
+      // Mint a new AgentForge key carrying this provider key (encrypted
+      // server-side), then switch this session to it — this browser's agent
+      // runs now bill the user's own account, for whichever provider the
+      // agent's model name resolves to.
       const res = await apiKeysApi.create(
-        label.trim() || "my-own-key",
-        "openai",
-        openaiKey.trim(),
+        label.trim() || `my-${provider.id}-key`,
+        provider.id,
+        llmKey.trim(),
       )
       signIn(res.data.raw_key)
-      setOpenaiKey("")
+      setLlmKey("")
       setLabel("")
       setDone(true)
     } catch (err) {
@@ -158,15 +173,16 @@ function BringYourOwnKey() {
 
   return (
     <Card>
-      <div className="label mb-2 text-deck-300">Use Your Own OpenAI Key</div>
-      <p className="mb-4 text-xs text-deck-400">
-        By default, agent runs use the platform's shared demo key. Paste your own
-        OpenAI key to run agents on your own account instead — it's encrypted at
-        rest and never shown again.
+      <div className="label mb-2 text-deck-300">Use Your Own LLM Key</div>
+      <p className="mb-4 text-xs leading-relaxed text-deck-400">
+        By default, agent runs use the platform's shared demo key. Bring your own
+        key from any supported provider to run on your own account instead — it's
+        encrypted at rest and never shown again. Then give your agent a matching
+        model name (below) so it routes to that provider.
       </p>
 
       {insecure && (
-        <div className="mb-4 rounded-sm border border-amber-500/40 bg-amber-500/5 p-3">
+        <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3">
           <p className="label mb-1 text-amber-400">connection not encrypted</p>
           <p className="text-[11px] leading-relaxed text-deck-400">
             This demo is served over plain HTTP (no HTTPS/domain yet), so a key
@@ -178,12 +194,21 @@ function BringYourOwnKey() {
       )}
 
       <form onSubmit={activate} className="space-y-3">
-        <Field label="OpenAI API key">
+        <Field label="Provider">
+          <Select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+            {PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={`${provider.name} API key`}>
           <Input
             type="password"
-            placeholder="sk-…"
-            value={openaiKey}
-            onChange={(e) => setOpenaiKey(e.target.value)}
+            placeholder={provider.keyHint}
+            value={llmKey}
+            onChange={(e) => setLlmKey(e.target.value)}
           />
         </Field>
         <Field label="Label (optional)">
@@ -193,13 +218,17 @@ function BringYourOwnKey() {
             onChange={(e) => setLabel(e.target.value)}
           />
         </Field>
+        <p className="rounded-xl border border-deck-700 bg-deck-900/50 px-3 py-2 text-[11px] leading-relaxed text-deck-400">
+          Then set your agent's <span className="text-deck-100">Model</span> to
+          e.g. <code className="font-mono text-signal">{provider.model}</code>
+        </p>
         {error && <ErrorState message={error} />}
         {done && (
           <p className="label text-signal">
             active — this session now runs on your own key
           </p>
         )}
-        <Button type="submit" disabled={saving || !openaiKey.trim()}>
+        <Button type="submit" disabled={saving || !llmKey.trim()}>
           {saving ? "Activating…" : "Use this key"}
         </Button>
       </form>

@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router-dom"
 import { useAuth } from "../lib/auth"
 
 const NAV_ITEMS = [
+  { to: "/guide", label: "Guide", glyph: "✦" },
   { to: "/agents", label: "Agents", glyph: "◈" },
   { to: "/evals", label: "Evals", glyph: "◎" },
   { to: "/analytics", label: "Analytics", glyph: "▤" },

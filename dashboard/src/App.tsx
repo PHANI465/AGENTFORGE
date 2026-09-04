@@ -11,6 +11,7 @@ import { EvalResults } from "./pages/EvalResults"
 import { EvalSuiteDetail } from "./pages/EvalSuiteDetail"
 import { Analytics } from "./pages/Analytics"
 import { Settings } from "./pages/Settings"
+import { Guide } from "./pages/Guide"
 
 function Gate() {
   const { apiKey } = useAuth()
@@ -28,6 +29,7 @@ function Gate() {
       {apiKey ? (
         <Route element={<Layout />}>
           <Route path="/" element={<Navigate to="/agents" replace />} />
+          <Route path="/guide" element={<Guide />} />
           <Route path="/agents" element={<AgentCatalog />} />
           <Route path="/agents/:agentId" element={<AgentDetail />} />
           <Route path="/runs/:runId/trace" element={<TraceViewer />} />
