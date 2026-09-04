@@ -121,6 +121,92 @@ function ApiKeys() {
   )
 }
 
+function BringYourOwnKey() {
+  const { signIn } = useAuth()
+  const [openaiKey, setOpenaiKey] = useState("")
+  const [label, setLabel] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  const insecure = typeof window !== "undefined" && window.location.protocol === "http:"
+
+  const activate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!openaiKey.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      // Mint a new AgentForge key that carries this OpenAI key (encrypted
+      // server-side), then switch this session to it — from now on this
+      // browser's agent runs bill the user's own OpenAI account.
+      const res = await apiKeysApi.create(
+        label.trim() || "my-own-key",
+        "openai",
+        openaiKey.trim(),
+      )
+      signIn(res.data.raw_key)
+      setOpenaiKey("")
+      setLabel("")
+      setDone(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <div className="label mb-2 text-deck-300">Use Your Own OpenAI Key</div>
+      <p className="mb-4 text-xs text-deck-400">
+        By default, agent runs use the platform's shared demo key. Paste your own
+        OpenAI key to run agents on your own account instead — it's encrypted at
+        rest and never shown again.
+      </p>
+
+      {insecure && (
+        <div className="mb-4 rounded-sm border border-amber-500/40 bg-amber-500/5 p-3">
+          <p className="label mb-1 text-amber-400">connection not encrypted</p>
+          <p className="text-[11px] leading-relaxed text-deck-400">
+            This demo is served over plain HTTP (no HTTPS/domain yet), so a key
+            entered here travels unencrypted. For a real key you care about, only
+            do this once the deployment has TLS — or use a throwaway key with a
+            low spending cap.
+          </p>
+        </div>
+      )}
+
+      <form onSubmit={activate} className="space-y-3">
+        <Field label="OpenAI API key">
+          <Input
+            type="password"
+            placeholder="sk-…"
+            value={openaiKey}
+            onChange={(e) => setOpenaiKey(e.target.value)}
+          />
+        </Field>
+        <Field label="Label (optional)">
+          <Input
+            placeholder="e.g. my-personal-key"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+          />
+        </Field>
+        {error && <ErrorState message={error} />}
+        {done && (
+          <p className="label text-signal">
+            active — this session now runs on your own key
+          </p>
+        )}
+        <Button type="submit" disabled={saving || !openaiKey.trim()}>
+          {saving ? "Activating…" : "Use this key"}
+        </Button>
+      </form>
+    </Card>
+  )
+}
+
 function SessionCard() {
   const { apiKey, signOut } = useAuth()
   return (
@@ -155,6 +241,7 @@ export function Settings() {
       <PageHeader eyebrow="Configuration" title="Settings" />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="space-y-6">
+          <BringYourOwnKey />
           <ApiKeys />
         </div>
         <div className="space-y-6">

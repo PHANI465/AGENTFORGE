@@ -153,10 +153,13 @@ export const analyticsApi = {
 
 export const apiKeysApi = {
   list: () => request<ListResponse<ApiKeyOut>>("/api/v1/api-keys"),
-  create: (userId: string, provider = "openai") =>
+  // llmApiKey (BYOK): when provided, it's encrypted server-side and stored
+  // on the new key; every agent run authenticated with that key then uses
+  // it instead of the platform's shared key.
+  create: (userId: string, provider = "openai", llmApiKey = "") =>
     request<DataResponse<ApiKeyCreated>>("/api/v1/api-keys", {
       method: "POST",
-      body: JSON.stringify({ user_id: userId, provider }),
+      body: JSON.stringify({ user_id: userId, provider, llm_api_key: llmApiKey }),
     }),
   delete: (id: string) =>
     request<void>(`/api/v1/api-keys/${id}`, { method: "DELETE" }),
