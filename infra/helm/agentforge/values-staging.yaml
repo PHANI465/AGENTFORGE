@@ -6,6 +6,9 @@ global:
 # does persists.
 demo:
   resetEnabled: true
+  # Public, intentionally-shared demo key (see the field's doc in values.yaml).
+  # This is the front door to the sandboxed demo — safe to commit.
+  apiKey: "afk_publicdemo_sandbox_key_share_freely_01"
 
 # No custom domain: host is left empty so the Ingress rule matches any
 # hostname, which is all that's needed to reach the ALB's own DNS name

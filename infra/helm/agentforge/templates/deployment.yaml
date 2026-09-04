@@ -25,7 +25,8 @@ spec:
           image: {{ include "agentforge.image" (dict "global" $.Values.global "svc" $svc) }}
           ports:
             - containerPort: {{ $svc.port }}
-          {{- if or $svc.env $svc.secretEnv }}
+          {{- $wantsDemoKey := and (eq $name "api-gateway") $.Values.demo.apiKey }}
+          {{- if or $svc.env $svc.secretEnv $wantsDemoKey }}
           env:
             {{- range $key, $value := $svc.env }}
             - name: {{ $key }}
@@ -37,6 +38,12 @@ spec:
                 secretKeyRef:
                   name: agentforge-secrets
                   key: {{ . }}
+            {{- end }}
+            {{- if $wantsDemoKey }}
+            # Public shared demo key — api-gateway serves it at
+            # /api/v1/demo/api-key so the dashboard can offer one-click entry.
+            - name: DEMO_API_KEY
+              value: {{ $.Values.demo.apiKey | quote }}
             {{- end }}
           {{- end }}
           resources:

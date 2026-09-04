@@ -162,6 +162,23 @@ export const apiKeysApi = {
     request<void>(`/api/v1/api-keys/${id}`, { method: "DELETE" }),
 }
 
+// --- Demo ---
+//
+// Only a public-demo deployment answers this (api-gateway returns 404
+// otherwise). Lets the sign-in page offer one-click entry with the shared
+// demo key instead of making a visitor hunt for it. Returns null on any
+// failure so a normal deployment simply shows no demo button.
+export const demoApi = {
+  async getKey(): Promise<string | null> {
+    try {
+      const res = await request<DataResponse<{ api_key: string }>>("/api/v1/demo/api-key")
+      return res.data.api_key || null
+    } catch {
+      return null
+    }
+  },
+}
+
 // --- Identity (services/auth-service — Phase 3.3) ---
 //
 // Two-step login: auth-service proves who you are and hands back a JWT;

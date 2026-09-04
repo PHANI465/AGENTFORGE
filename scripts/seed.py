@@ -261,7 +261,12 @@ async def seed(reset: bool = False) -> None:
             session.add(agent_2)
             await session.flush()
 
-        dev_raw_key = generate_api_key()
+        # In demo (--reset) mode, prefer a fixed key from DEMO_API_KEY so the
+        # dashboard's /api/v1/demo/api-key endpoint can hand visitors a
+        # working key (the no-auth demo has no other way to discover it).
+        # Falls back to a random key if unset, and dev mode is always random.
+        env_demo_key = os.environ.get("DEMO_API_KEY", "").strip()
+        dev_raw_key = env_demo_key if (reset and env_demo_key) else generate_api_key()
         session.add(
             ApiKeyORM(
                 id=key_id,

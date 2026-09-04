@@ -1,8 +1,41 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useAuth } from "../lib/auth"
-import { identityApi } from "../api/client"
+import { demoApi, identityApi } from "../api/client"
 import { Button, Card, ErrorState, Field, Input } from "../components/ui"
+
+/** Shown only on a public-demo deployment (api-gateway exposes the shared
+ * key at /api/v1/demo/api-key). One click signs the visitor straight in —
+ * the whole point of the sandboxed demo is that this key is public. */
+function DemoEntry() {
+  const { signIn } = useAuth()
+  const [demoKey, setDemoKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    demoApi.getKey().then((key) => {
+      if (active) setDemoKey(key)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (!demoKey) return null
+
+  return (
+    <>
+      <Button type="button" className="w-full" onClick={() => signIn(demoKey)}>
+        Try the live demo — no signup
+      </Button>
+      <div className="flex items-center gap-3">
+        <div className="h-px flex-1 bg-deck-700" />
+        <span className="label text-deck-500">or sign in</span>
+        <div className="h-px flex-1 bg-deck-700" />
+      </div>
+    </>
+  )
+}
 
 function OAuthButtons() {
   return (
@@ -110,6 +143,7 @@ export function SignIn() {
         </div>
 
         <Card className="space-y-5">
+          <DemoEntry />
           <OAuthButtons />
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-deck-700" />

@@ -47,6 +47,14 @@ spec:
                     secretKeyRef:
                       name: agentforge-secrets
                       key: OPENAI_API_KEY
+                {{- if .Values.demo.apiKey }}
+                # Seed the fixed public demo key so it matches what
+                # api-gateway serves at /api/v1/demo/api-key (single source:
+                # .Values.demo.apiKey). Without this the reset job would mint
+                # a random key the dashboard's one-click entry couldn't know.
+                - name: DEMO_API_KEY
+                  value: {{ .Values.demo.apiKey | quote }}
+                {{- end }}
               resources:
                 requests: { cpu: 50m, memory: 128Mi }
                 limits: { cpu: 200m, memory: 256Mi }

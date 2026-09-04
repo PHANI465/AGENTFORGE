@@ -32,6 +32,13 @@ externalConfig:
 demo:
   resetEnabled: false
   resetSchedule: "0 */6 * * *"
+  # Fixed public demo API key. When set, the demo-reset job seeds this exact
+  # key and api-gateway serves it at GET /api/v1/demo/api-key, so the
+  # dashboard can offer a one-click "try the demo" entry without a visitor
+  # having to discover a randomly-minted key. Intentionally public — the key
+  # is tenant-scoped, per-agent budget-capped, WAF-rate-limited, and the data
+  # resets on schedule. Empty = normal deployment (endpoint 404s, keys random).
+  apiKey: ""
 
 ingress:
   enabled: false
