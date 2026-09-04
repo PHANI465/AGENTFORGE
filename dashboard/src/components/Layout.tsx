@@ -1,5 +1,6 @@
-import { NavLink, Outlet } from "react-router-dom"
+import { NavLink, Outlet, useLocation } from "react-router-dom"
 import { useAuth } from "../lib/auth"
+import { ErrorBoundary } from "./ErrorBoundary"
 
 const NAV_ITEMS = [
   { to: "/guide", label: "Guide", glyph: "✦" },
@@ -11,6 +12,7 @@ const NAV_ITEMS = [
 
 export function Layout() {
   const { signOut } = useAuth()
+  const location = useLocation()
 
   return (
     <div className="flex min-h-screen">
@@ -72,7 +74,9 @@ export function Layout() {
 
       <main className="hud-scan flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-8 py-10">
-          <Outlet />
+          <ErrorBoundary resetKey={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </main>
     </div>

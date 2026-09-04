@@ -11,8 +11,8 @@ import {
   PageHeader,
   StatusPill,
 } from "../components/ui"
-import { formatDateTime, formatMs, formatUsd } from "../lib/format"
-import type { EvalCompareOut, EvalRunOut } from "../api/types"
+import { formatDateTime, formatMs, formatTokens, formatUsd } from "../lib/format"
+import type { EvalCompareOut, EvalResultOut, EvalRunOut } from "../api/types"
 
 function RunRow({
   run,
@@ -49,6 +49,70 @@ function RunRow({
   )
 }
 
+/** Per-test-case results for a single run. The list endpoint omits `results`
+ * for brevity, so we fetch the full run on demand when one is selected. */
+function RunDetail({ runId }: { runId: string }) {
+  const { data, loading, error } = useApi(() => evalsApi.getRun(runId), [runId])
+
+  if (loading) return <LoadingState />
+  if (error) return <ErrorState message={error} />
+  if (!data) return null
+
+  const run = data.data
+  const results = run.results ?? []
+
+  return (
+    <Card className="rise-in mt-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="label text-deck-300">Run detail — per test case</div>
+        {run.summary && (
+          <div className="flex items-center gap-4">
+            <span className="label text-deck-400">
+              {run.summary.passed}/{run.summary.total} passed
+            </span>
+            <span className="label text-deck-400">
+              avg {formatMs(run.summary.avg_latency_ms)}
+            </span>
+            <span className="label text-deck-400">{formatUsd(run.summary.total_cost_usd)}</span>
+          </div>
+        )}
+      </div>
+
+      {results.length === 0 ? (
+        <EmptyState message="No per-case results recorded for this run." />
+      ) : (
+        <div className="space-y-2">
+          {results.map((r: EvalResultOut, i) => (
+            <div
+              key={r.test_case_id ?? i}
+              className="rounded-sm border border-deck-700 p-3"
+            >
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="font-mono text-[11px] text-deck-400">{r.test_case_id}</span>
+                <StatusPill status={r.passed ? "completed" : "failed"} />
+              </div>
+              {r.actual_output != null && r.actual_output !== "" && (
+                <p className="mb-2 whitespace-pre-wrap text-xs text-deck-100">{r.actual_output}</p>
+              )}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-deck-500">
+                <span>latency {formatMs(r.latency_ms)}</span>
+                <span>tokens {r.tokens_used != null ? formatTokens(r.tokens_used) : "—"}</span>
+                {r.score != null && <span>score {r.score.toFixed(2)}</span>}
+                {r.safety_violations && r.safety_violations.length > 0 && (
+                  <span className="text-danger">
+                    {r.safety_violations.length} safety violation
+                    {r.safety_violations.length === 1 ? "" : "s"}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
 function CompareView({ compare }: { compare: EvalCompareOut }) {
   const rows = [
     {
@@ -76,7 +140,12 @@ function CompareView({ compare }: { compare: EvalCompareOut }) {
 
   return (
     <Card className="rise-in mt-4">
-      <div className="label mb-4 text-deck-300">Comparison — A (earlier) vs B (later)</div>
+      <div className="mb-4 grid grid-cols-4 items-center gap-3">
+        <span className="label text-deck-300">Comparison</span>
+        <span className="label text-deck-500">A · earlier</span>
+        <span className="label text-deck-500">B · later</span>
+        <span className="label text-deck-500">Δ</span>
+      </div>
       <div className="space-y-3">
         {rows.map((r) => (
           <div key={r.label} className="grid grid-cols-4 items-center gap-3 text-sm">
@@ -177,7 +246,16 @@ export function EvalSuiteDetail() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <Card className="mb-4">
-            <div className="label mb-3 text-deck-300">Run History</div>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="label text-deck-300">Run History</div>
+              <div className="label !normal-case !tracking-normal text-deck-500">
+                {selected.length === 0
+                  ? "Select a run to inspect it, or two to compare"
+                  : selected.length === 1
+                    ? "Showing results below · select another to compare"
+                    : "Two selected · compare below"}
+              </div>
+            </div>
             {runsLoading && <LoadingState />}
             {runsData && runsData.data.length === 0 && (
               <EmptyState message="No runs yet — click Run Suite to execute it." />
@@ -207,29 +285,47 @@ export function EvalSuiteDetail() {
               </div>
             )}
           </Card>
+
+          {/* One run selected → show its per-case results. Two → show compare. */}
+          {selected.length === 1 && <RunDetail runId={selected[0]} />}
           {compare && <CompareView compare={compare} />}
         </div>
 
-        <Card>
-          <div className="label mb-3 text-deck-300">Test Cases</div>
-          <div className="space-y-2">
-            {suite.test_cases.map((tc, i) => (
-              <div key={tc.id ?? i} className="rounded-sm border border-deck-700 p-2.5">
-                <p className="text-xs text-deck-100">{tc.input}</p>
-                {tc.expected_output && (
-                  <p className="mt-1 text-xs text-deck-500">
-                    expects: {tc.expected_output}
-                  </p>
-                )}
-                {tc.expected_tool_calls && tc.expected_tool_calls.length > 0 && (
-                  <p className="mt-1 font-mono text-[11px] text-cyan">
-                    {tc.expected_tool_calls.join(", ")}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </Card>
+        <div className="space-y-4">
+          <Card className="border-signal/20 bg-signal/5">
+            <div className="label mb-2 text-signal">What evals do</div>
+            <p className="text-xs leading-relaxed text-deck-300">
+              A suite is a set of test cases — an input, and optionally the output
+              or tools you expect. <span className="text-deck-100">Run Suite</span>{" "}
+              executes them all against the agent and scores each one. Run it again
+              after changing a prompt or model, then{" "}
+              <span className="text-deck-100">select two runs to compare</span> pass
+              rate, latency, and cost side by side — so you can prove a change made
+              the agent better, not just different.
+            </p>
+          </Card>
+
+          <Card>
+            <div className="label mb-3 text-deck-300">Test Cases</div>
+            <div className="space-y-2">
+              {suite.test_cases.map((tc, i) => (
+                <div key={tc.id ?? i} className="rounded-sm border border-deck-700 p-2.5">
+                  <p className="text-xs text-deck-100">{tc.input}</p>
+                  {tc.expected_output && (
+                    <p className="mt-1 text-xs text-deck-500">
+                      expects: {tc.expected_output}
+                    </p>
+                  )}
+                  {tc.expected_tool_calls && tc.expected_tool_calls.length > 0 && (
+                    <p className="mt-1 font-mono text-[11px] text-cyan">
+                      {tc.expected_tool_calls.join(", ")}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
       </div>
     </div>
   )
