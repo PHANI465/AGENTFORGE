@@ -161,17 +161,29 @@ Route53 record) can take a few minutes on first deploy.
 
 ## Step 4 — Tear down
 
+**From GitHub (no local tools needed):** run **Actions → Infra Apply →
+Run workflow** with **destroy** checked and apply unchecked first to
+review what gets removed, then re-run with **destroy and apply** both
+checked. Before Terraform destroys the cluster, a pre-destroy step
+uninstalls the app + Load Balancer Controller so the ALB — which the
+controller creates and which is **not** in Terraform state — is torn
+down cleanly (the Ingress finalizer blocks until the ALB is actually
+gone) rather than left orphaned and billing. The S3 state bucket/lock
+table are deliberately kept, so you can re-apply the environment later
+without re-bootstrapping.
+
+**From your own machine (needs Terraform + AWS CLI):**
+
 ```bash
 scripts/teardown-aws.sh <dev|staging|prod>
 ```
 
-Runs `terraform destroy` for that environment. As the script itself
-warns: any ALB/target-group/EIP created by the Load Balancer Controller
-(as opposed to by Terraform directly) is **not** in Terraform's state —
-check `aws elbv2 describe-load-balancers` and `aws ec2 describe-addresses`
-after tearing down and remove anything orphaned by hand. This matters
-more now than it used to, since a real Ingress with a real ALB is the
-whole point of this runbook.
+Either way, the ALB cleanup is best-effort. If the cluster was already
+unreachable when teardown ran (so the pre-destroy step was skipped),
+any ALB/target-group/EIP created by the Load Balancer Controller is
+**not** in Terraform's state — check `aws elbv2 describe-load-balancers`
+and `aws ec2 describe-addresses` afterward and remove anything orphaned
+by hand.
 
 See [`docs/aws-cost-estimate.md`](aws-cost-estimate.md) for what each
 environment costs per hour if left running — the intended pattern is

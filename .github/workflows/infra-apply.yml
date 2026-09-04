@@ -1,10 +1,10 @@
 name: Infra Apply
 
 # Manual-only, deliberately: ADR-003 (CLAUDE.md) runs this project on a $0
-# AWS budget with no always-on cloud resources — spin up, demo, tear down
-# (scripts/teardown-aws.sh), not deploy-on-every-push. Auto-applying
-# Terraform on merge would silently start real billing and risks unattended
-# infra drift on a solo-maintained project with no infra review gate.
+# AWS budget with no always-on cloud resources — spin up, demo, tear down,
+# not deploy-on-every-push. Auto-applying Terraform on merge would silently
+# start real billing and risks unattended infra drift on a solo-maintained
+# project with no infra review gate.
 #
 # `plan` always runs on dispatch. `apply` only runs if the triggering
 # environment has required reviewers configured (Settings → Environments) —
@@ -17,13 +17,22 @@ name: Infra Apply
 # local state — the backend block gets stripped from versions.tf for this
 # run only (sed, below), since the bucket doesn't exist yet and a fresh
 # directory can't partially-initialize against a backend that isn't there.
-# Once that succeeds, set
-# create_state_bucket back to false in the tfvars (the bucket becomes an
-# out-of-band backend target from here on, not something this state
-# tracks — leaving it true would make the next normal apply try to
-# recreate a bucket that already exists) and run again with
+# Once that succeeds, set create_state_bucket back to false in the tfvars
+# (the bucket becomes an out-of-band backend target from here on, not
+# something this state tracks — leaving it true would make the next normal
+# apply try to recreate a bucket that already exists) and run again with
 # bootstrap_state unchecked, which initializes the real S3 backend and
 # applies everything else with state that actually persists across runs.
+#
+# `destroy`: the teardown button — spins the whole environment back down so
+# it stops billing (~$0.20+/hr for staging). Plan it first (destroy checked,
+# apply unchecked) to review what gets removed, then re-run with apply also
+# checked. Before Terraform destroys the cluster, a best-effort step
+# uninstalls the app + LB controller so the ALB (created by the controller,
+# NOT tracked in Terraform state) is torn down cleanly rather than orphaned.
+# The S3 state bucket/lock table are intentionally NOT destroyed (they're
+# out-of-band, count=0 in state), so the environment can be re-applied later
+# without re-bootstrapping.
 
 on:
   workflow_dispatch:
@@ -43,6 +52,11 @@ on:
         required: true
         type: boolean
         default: false
+      destroy:
+        description: "Tear the environment down (terraform destroy) instead of building it up"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -50,10 +64,16 @@ permissions:
 
 jobs:
   plan:
-    name: terraform plan (${{ inputs.environment }})
+    name: terraform ${{ inputs.destroy && 'destroy-' || '' }}plan (${{ inputs.environment }})
     runs-on: ubuntu-latest
 
     steps:
+      - name: Reject bootstrap + destroy together
+        if: inputs.bootstrap_state == true && inputs.destroy == true
+        run: |
+          echo "bootstrap_state and destroy are mutually exclusive — pick one." >&2
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: hashicorp/setup-terraform@v3
@@ -99,9 +119,12 @@ jobs:
         # it; db_password comes from TF_VAR_db_password above). If you've
         # customized envs/<env>.tfvars locally beyond the example (e.g. a
         # real domain_name), apply from your machine instead, or update
-        # the .example file to match before running this.
+        # the .example file to match before running this. A -destroy plan,
+        # applied, tears the environment down; -target=module.s3 is the
+        # bootstrap-only carve-out.
         run: |
           terraform plan -var-file="envs/${{ inputs.environment }}.tfvars.example" \
+            ${{ inputs.destroy == true && '-destroy' || '' }} \
             ${{ inputs.bootstrap_state == true && '-target=module.s3' || '' }} \
             -out=tfplan
 
@@ -112,7 +135,7 @@ jobs:
           retention-days: 1
 
   apply:
-    name: terraform apply (${{ inputs.environment }})
+    name: terraform ${{ inputs.destroy && 'destroy' || 'apply' }} (${{ inputs.environment }})
     runs-on: ubuntu-latest
     needs: [plan]
     if: inputs.apply == true
@@ -126,10 +149,35 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
 
+      - uses: azure/setup-helm@v4
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      # The ALB is created by the in-cluster AWS Load Balancer Controller in
+      # response to the Ingress, and is NOT in Terraform state — so a plain
+      # terraform destroy would leave it (and its target groups) orphaned and
+      # still billing. Deleting the Ingress first makes the controller tear
+      # the ALB down (its finalizer on the Ingress blocks deletion until the
+      # ALB is actually gone, so this waits for real). Best-effort: if the
+      # cluster is already gone/unreachable, skip and let terraform proceed
+      # — worst case is the same manual orphan-check the old teardown script
+      # always warned about.
+      - name: Pre-destroy — remove app + LB controller so the ALB is cleaned up
+        if: inputs.destroy == true
+        continue-on-error: true
+        run: |
+          set +e
+          aws eks update-kubeconfig --region ${{ vars.AWS_REGION || 'us-east-1' }} \
+            --name agentforge-${{ inputs.environment }} || { echo "cluster unreachable — skipping k8s cleanup"; exit 0; }
+          helm uninstall agentforge -n default || true
+          # Blocks on the LB controller's Ingress finalizer until the ALB is
+          # actually deleted.
+          kubectl delete ingress --all -n default --ignore-not-found --timeout=5m || true
+          helm uninstall aws-load-balancer-controller -n kube-system || true
+          helm uninstall external-dns -n kube-system || true
 
       - name: Disable backend block for bootstrap run
         if: inputs.bootstrap_state == true
@@ -156,10 +204,14 @@ jobs:
           name: tfplan-${{ inputs.environment }}
           path: infra/terraform
 
+      # Applying a saved -destroy plan performs the destruction; applying a
+      # normal plan builds. Same command either way — the plan artifact
+      # carries the intent.
       - name: terraform apply
         working-directory: infra/terraform
         run: terraform apply tfplan
 
       - name: Show outputs (copy the ARNs into repo secrets for cd.yml)
+        if: inputs.destroy == false
         working-directory: infra/terraform
         run: terraform output
