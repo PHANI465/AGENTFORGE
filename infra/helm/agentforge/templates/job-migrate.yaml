@@ -1,0 +1,51 @@
+{{/*
+Runs `alembic upgrade head` against the database before the app rolls out,
+as a Helm pre-install/pre-upgrade hook. Without this, a fresh environment's
+RDS is an empty Postgres and every service fails with
+`relation "agents" does not exist` (and the demo-reset CronJob crashes) —
+`terraform apply` provisions the DB server but never the schema. Reuses the
+api-gateway image (it already bundles alembic + agentforge_common + the
+migration scripts, same as the demo-reset CronJob) so there's no separate
+image to build. Uses the freshly-built imageTag, so migrations for the new
+code version run before that version's pods start.
+
+hook-weight -5 keeps this ahead of any other hooks; the delete policy wipes
+the previous run's Job before creating a new one and cleans up on success
+(a failed migration Job is left behind on purpose, for `kubectl logs`).
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agentforge-migrate
+  labels:
+    {{- include "agentforge.labels" . | nindent 4 }}
+    app.kubernetes.io/name: agentforge-migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "agentforge.labels" . | nindent 8 }}
+        app.kubernetes.io/name: agentforge-migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: {{ include "agentforge.image" (dict "global" .Values.global "svc" (index .Values.services "api-gateway")) }}
+          # alembic.ini lives in packages/common; env.py reads the DSN from
+          # agentforge_common.settings (POSTGRES_DSN), so no config override
+          # is needed — just run from that directory against the shared venv.
+          command: ["sh", "-c", "cd /app/packages/common && uv run --project /app alembic upgrade head"]
+          env:
+            - name: POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: agentforge-secrets
+                  key: POSTGRES_DSN
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 200m, memory: 256Mi }
